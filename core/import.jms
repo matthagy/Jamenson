@@ -1,0 +1,135 @@
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr 'lambda 'iter 'cons 'symbol 'setf 'control))
+
+(defmacro import (&rest-clist forms)
+  (make-imports (parse-imports-and-load forms)))
+
+(defmacro with-import ((&rest-clist forms) &body body)
+  (let ((imports (parse-imports-and-load forms)))
+    `(let (,@(b:clist &rest (collect-bindings imports)))
+       ,(make-imports imports)
+       ,body)))
+
+(eval-when (:compile-toplevel :load-toplevel)
+
+  (defun parse-imports-and-load (forms)
+    (b:map set-all-imports (parse-imports forms)))
+
+  (defun parse-imports (ptr)
+    (let ((acc (b:list)))
+      (while ptr
+        (case (car ptr)
+          ((and :and import :import)
+           (pop ptr))
+          ((from :from)
+           (pop ptr)
+           (let ((mod (pop ptr))
+                 (fromlist (b:list)))
+             (assert (or (symbolp mod)
+                         (consp mod)))                       
+             (when (in (car ptr)
+                       '(import :import))
+               (pop ptr))
+             (while (and ptr
+                         (notin (car ptr)
+                                '(and :and)))
+               (assert (symbolp (car ptr)))
+               (fromlist.append (pop ptr)))
+             (acc.append
+                  (b:obj :type 'from
+                         :module mod
+                         :fromlist (b:filter (lambda (op)
+                                               (not (in op '(* :*))))
+                                             fromlist)
+                         :all (or (in ':* fromlist)
+                                  (in '* fromlist))))))
+          (&otherwise
+           (let ((mod (pop ptr)))
+             (acc.append
+                  (b:obj :type 'import
+                         :module mod
+                         :as (cond ((in (car ptr)
+                                        '(as :as))
+                                    (pop ptr)
+                                    (assert (symbolp (car ptr)))
+                                    (pop ptr))
+                                   ((consp mod)
+                                    (let ((op mod))
+                                      (while (consp op)
+                                        (setq op (cadr op)))
+                                      (assert (symbolp op))
+                                      op))
+                                   ((symbolp mod)
+                                    mod)
+                                   (t 
+                                    (error "bad mod %s in import" mod)))))))))
+      acc))
+
+  (defun set-all-imports (mod)
+    (when (and (eq mod.type 'from)
+               mod.all)
+      (mod.fromlist.extend (load-module-imports mod.module)))
+    mod)
+
+  (defun collect-module-attrs (op)
+    (cond ((consp op)
+           (let ((acc (b:list)))
+             (while (consp op)
+               (assert (in (car op) '(b:attr attr a getattrq)))
+               (acc.append (symbol-name (caddr op)))
+               (setq op (cadr op)))
+             (assert (symbolp op))
+             (acc.append (symbol-name op))
+             (acc.reverse)
+             acc))
+          ((symbolp op)
+           (make-list (b:str op)))
+          ((stringp op)
+           (make-list op))
+          (t
+           (error "bad op %s" op))))
+
+  (defun stringify-attr (op)
+    ((b:attr "." join) (b:map b:str (collect-module-attrs op))))
+
+  (defun load-module-imports (module-form)
+    (let ((mod (b:__import__ (stringify-attr module-form))))
+      (for (name (getitem (collect-module-attrs module-form) 
+                          (b:slice 1 None None)))
+        (setq mod (b:getattr mod name)))
+      (b:map b:Symbol 
+             (b:sorted
+              (cond ((b:hasattr mod "__all__")
+                     mod.__all__)
+                    (t
+                     (.iterkeys (b:vars mod))))))))
+  
+  (defun collect-bindings (imports)
+    (let ((bindings (b:list)))
+      (for (import imports bindings)
+        (ecase import.type
+               (from
+                (bindings.extend import.fromlist))
+               (import
+                (bindings.append import.as))))))
+
+  (defun make-imports (imports)
+    `(progn
+       ,@(b:clist &rest (b:map make-import imports))))
+
+  (defun make-import (import)
+    (ecase import.type
+           (from
+            (with-gensyms (mod)
+              `(let ((,mod (b:__import__ ,(stringify-attr import.module)
+                                         :fromlist ,(b:map b:str import.fromlist))))
+                 ,@(b:clist &rest
+                            (b:map (lambda (from)
+                                     `(setq ,from (getattrq ,mod ,from)))
+                                   import.fromlist)))))
+           (import
+            `(setq ,import.as (b:__import__ ,(stringify-attr import.module))))))
+  )
+
+

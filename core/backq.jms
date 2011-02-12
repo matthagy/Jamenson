@@ -1,0 +1,221 @@
+;;;; derived from backq.lisp from SBCL from CMU CL
+
+;;;; the backquote reader macro
+
+;;;; This software is part of the SBCL system. See the README file for
+;;;; more information.
+;;;;
+;;;; This software is derived from the CMU CL system, which was
+;;;; written at Carnegie Mellon University and released into the
+;;;; public domain. The software is in the public domain and is
+;;;; provided with absolutely no warranty. See the COPYING and CREDITS
+;;;; files for more information.
+
+;;; The flags passed back by BACKQUOTIFY can be interpreted as follows:
+;;;
+;;;   |`,|: [a] => a
+;;;    NIL: [a] => a            ;the NIL flag is used only when a is NIL
+;;;      T: [a] => a            ;the T flag is used when a is self-evaluating
+;;;  QUOTE: [a] => (QUOTE a)
+;;; APPEND: [a] => (APPEND . a)
+;;;  NCONC: [a] => (NCONC . a)
+;;;   LIST: [a] => (CLIST . a)
+;;;  LIST*: [a] => (CLIST* . a)
+;;;
+;;; The flags are combined according to the following set of rules:
+;;;  ([a] means that a should be converted according to the previous table)
+;;;
+;;;   \ car  ||    otherwise    |    QUOTE or     |     |`,@|      |     |`,.|
+;;;cdr \     ||                 |    T or NIL     |                |
+;;;================================================================================
+;;;  |`,|    || LIST* ([a] [d]) | LIST* ([a] [d]) | APPEND (a [d]) | NCONC  (a [d])
+;;;  NIL     || LIST    ([a])   | QUOTE    (a)    | <hair>    a    | <hair>    a
+;;;QUOTE or T|| LIST* ([a] [d]) | QUOTE  (a . d)  | APPEND (a [d]) | NCONC (a [d])
+;;; APPEND   || LIST* ([a] [d]) | LIST* ([a] [d]) | APPEND (a . d) | NCONC (a [d])
+;;; NCONC    || LIST* ([a] [d]) | LIST* ([a] [d]) | APPEND (a [d]) | NCONC (a . d)
+;;;  LIST    || LIST  ([a] . d) | LIST  ([a] . d) | APPEND (a [d]) | NCONC (a [d])
+;;;  LIST*   || LIST* ([a] . d) | LIST* ([a] . d) | APPEND (a [d]) | NCONC  (a [d])
+;;;
+;;;<hair> involves starting over again pretending you had read ".,a)" instead
+;;; of ",@a)"
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0))
+
+(let ((jamenson (b:__import__ "jamenson.runtime.read")))
+  (setq read-mod jamenson.runtime.read))
+
+(setq *backquote-count* 0)
+(setq *bq-comma-flag* '(|,|))
+(setq *bq-at-flag* '(|,@|))
+(setq *bq-dot-flag* '(|,.|))
+(setq *bq-vector-flag* '(|bqv|))
+
+(bs!defun simple-reader-error (msg &rest args)
+  (read-mod.syntax_error (if args
+                             (modulo msg (tuple args))
+                             msg)))
+
+;;; the actual character macro
+(bs!defun backquote-macro ()
+  (read-mod.pull_char)
+  (bs!globlet ((*backquote-count* (1+ *backquote-count*)))
+    (bs!destructuring-bind (flag &rest thing) (backquotify (read-mod.read))
+      (when (eq flag *bq-at-flag*)
+        (simple-reader-error ",@ after backquote in %S" thing))
+      (when (eq flag *bq-dot-flag*)
+        (simple-reader-error ",. after backquote in %S" thing))
+      (backquotify-1 flag thing))))
+
+
+(bs!defun backquote-macro ()
+  (read-mod.pull_char)
+  (bs!globlet ((*backquote-count* (1+ *backquote-count*)))
+    (let ((x (read-mod.read)))
+      (bs!destructuring-bind (flag &rest thing) (backquotify x)
+        (when (eq flag *bq-at-flag*)
+          (simple-reader-error ",@ after backquote in %S" thing))
+        (when (eq flag *bq-dot-flag*)
+          (simple-reader-error ",. after backquote in %S" thing))
+        (backquotify-1 flag thing)))))
+
+(bs!defun comma-macro ()
+  (read-mod.pull_char)
+  (unless (gt *backquote-count* 0)
+    (simple-reader-error "comma not inside a backquote"))
+  (let ((c (read-mod.pull_char)))
+    (bs!globlet ((*backquote-count* (1- *backquote-count*)))
+      (cond ((eq c "@")
+	     (b:cons *bq-at-flag* (read-mod.read)))
+	    ((eq c ".")
+	     (b:cons *bq-dot-flag* (read-mod.read)))
+	    (t (read-mod.push_char c)
+	       (b:cons *bq-comma-flag* (read-mod.read)))))))
+
+
+;;;
+(bs!defun expandable-backq-expression-p (object)
+  (and (consp object)
+       (let ((flag (car object)))
+         (or (eq flag *bq-at-flag*)
+             (eq flag *bq-dot-flag*)))))
+
+;;; This does the expansion from table 2.
+(bs!defun backquotify (code)
+  (cond ((atom code)
+         (cond ((null code) (b:cons nil nil))
+               ((or (consp code)
+                    (symbolp code))
+                ;; Keywords are self-evaluating. Install after packages.
+                (b:cons 'quote code))
+               (t (b:cons t code))))
+        ((or (eq (car code) *bq-at-flag*)
+             (eq (car code) *bq-dot-flag*))
+         (b:cons (car code) (cdr code)))
+        ((eq (car code) *bq-comma-flag*)
+         (comma (cdr code)))
+        ((eq (car code) *bq-vector-flag*)
+         (bs!destructuring-bind (dflag &rest d) (backquotify (cdr code))
+           (b:cons 'vector (backquotify-1 dflag d))))
+        (t (bs!destructuring-bind (aflag &rest a) (backquotify (car code))
+             (bs!destructuring-bind (dflag &rest d) (backquotify (cdr code))
+               (when (eq dflag *bq-at-flag*)
+                 ;; Get the errors later.
+                 (simple-reader-error ",@ after dot in ~S" code))
+               (when (eq dflag *bq-dot-flag*)
+                 (simple-reader-error ",. after dot in ~S" code))
+               (cond
+                 ((eq aflag *bq-at-flag*)
+                  (if (null dflag)
+                      (if (expandable-backq-expression-p a)
+                          (b:cons 'append (b:clist a))
+                          (comma a))
+                      (b:cons 'append
+                              (cond ((eq dflag 'append)
+                                     (b:cons a d ))
+                                    (t (b:clist a (backquotify-1 dflag d)))))))
+                 ((eq aflag *bq-dot-flag*)
+                  (if (null dflag)
+                      (if (expandable-backq-expression-p a)
+                          (b:cons 'nconc (b:clist a))
+                          (comma a))
+                      (b:cons 'nconc
+                              (cond ((eq dflag 'nconc)
+                                     (b:cons a d))
+                                    (t (b:clist a (backquotify-1 dflag d)))))))
+                 ((null dflag)
+                  (if (in aflag '(quote t nil))
+                      (b:cons 'quote (b:clist a))
+                      (b:cons 'list (b:clist (backquotify-1 aflag a)))))
+                 ((in dflag '(quote t))
+                  (if (in aflag '(quote t nil))
+                      (b:cons 'quote (b:cons a d ))
+                      (b:cons 'list* (b:clist (backquotify-1 aflag a)
+                                              (backquotify-1 dflag d)))))
+                 (t (setq a (backquotify-1 aflag a))
+                    (if (in dflag '(b:clist list*))
+                        (b:cons dflag (b:cons a d))
+                        (b:cons 'list*
+                                (b:clist a (backquotify-1 dflag d)))))))))))
+
+
+;;; This handles the <hair> cases.
+(bs!defun comma (code)
+  (cond ((atom code)
+         (cond ((null code)
+                (b:cons nil nil))
+               ((or (numberp code) (eq code t))
+                (b:cons t code))
+               (t (b:cons *bq-comma-flag* code))))
+        ((and (eq (car code) 'quote)
+              (not (expandable-backq-expression-p (cadr code))))
+         (b:cons (car code) (cadr code)))
+        ((in (car code) '(append list list* nconc))
+         (b:cons (car code) (cdr code)))
+        ((eq (car code) 'b:cons)
+         (b:cons 'list* (cdr code)))
+        (t (b:cons *bq-comma-flag* code))))
+
+;;; This handles table 1.
+(bs!defun backquotify-1 (flag thing)
+  (cond ((or (eq flag *bq-comma-flag*)
+             (in flag '(t nil)))
+         thing)
+        ((eq flag 'quote)
+         (b:clist  'quote thing))
+        ((eq flag 'list*)
+         (cond ((and (null (cddr thing))
+                     (not (expandable-backq-expression-p (car thing)))
+                     (not (expandable-backq-expression-p (cadr thing))))
+                (b:cons 'backq-cons thing))
+               ((expandable-backq-expression-p (car (last thing)))
+                (b:clist 'backq-append
+                      (b:cons 'backq-list (butlast thing))
+                      ;; Can it be optimized further? -- APD, 2001-12-21
+                      (car (last thing))))
+               (t
+                (b:cons 'backq-list* thing))))
+        ((eq flag 'vector)
+         (b:clist 'backq-vector thing))
+        (t (b:cons (bs!case flag
+                   ((list) 'backq-list)
+                   ((append) 'backq-append)
+                   ((nconc) 'backq-nconc))
+                 thing))))
+
+
+(bs!macrolet ((def (b-name name)
+		  (let ((args (b:gensym "ARGS")))
+		    (b:clist 'bs!defun b-name (b:clist '&rest args)
+			   (b:clist name '&rest args)))))
+	     (def backq-list b:clist)
+	     (def backq-list* clist*)
+	     (def backq-append append)
+	     (def backq-nconc nconc)
+	     (def backq-cons b:cons))
+
+(let* ((jamenson (b:__import__ "jamenson.runtime.read"))
+       (register jamenson.runtime.read.register_reader_aux))
+  (register "`" backquote-macro)
+  (register "," comma-macro))
+

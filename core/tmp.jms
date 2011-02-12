@@ -1,0 +1,19 @@
+(progn 
+  (destructuring-bind 
+        ((itr-place itr-form &body ret-forms) &body body) 
+      #:destruct-symbol2 
+    (progn 
+      (with-gensyms (iter lbl-loop lbl-endloop) 
+        (when (consp itr-place) 
+          (with-gensyms (destruct-sym) 
+            (setq body (backq-list* 'destructuring-bind itr-place destruct-sym (backq-list body))) 
+            (setq itr-place destruct-sym)))
+        (backq-list* 'let (backq-cons (backq-cons iter (backq-list (backq-cons 'get-iter (backq-list itr-form))))
+                                      (backq-list 
+                                       itr-place))
+                     (backq-list* 'tagbody lbl-loop 
+                                  (backq-list* 'foriter lbl-endloop itr-place (backq-list iter))
+                                  body
+                                  (backq-cons 'go (backq-list lbl-loop))
+                                  (backq-list lbl-endloop))
+                     (backq-list ret-forms))))))

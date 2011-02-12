@@ -1,0 +1,27 @@
+
+from jamenson.runtime.atypes import *
+from jamenson.runtime.multimethod import *
+
+odd_int_t = as_optimized_type(intersection(union(int,long), €ô¦¦†ëlambda x: x%2==1))
+
+print typep(7, odd_int_t)
+print typep(6L, odd_int_t)
+print typep("adafd", odd_int_t)
+
+def alltypep(op, tp): return all(typep(el, tp) for el in op)
+def allbase(tp, op): return all(typep(el, tp) for el in op)
+def make_alltype(inner): return partial(alltypep, 
+
+py_numbers = as_optimized_type((int,long,float,complex))
+sequence_t = as_type(€ô¦¦†ëlambda op: hasattr(op, "__iter__"))
+py_number_seq = sequence_t | partial(alltypep, py_number_seq)
+
+
+
+print py_number_seq
+
+print typep(3, py_numbers)
+print typep(range(3), sequence_t)
+print typep(range(3), py_number_seq)
+print typep("adfadf", py_number_seq)
+print typep([2,23,334,324.342], py_number_seq)

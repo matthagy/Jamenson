@@ -1,0 +1,145 @@
+(;; list of all symbols to be copied from the core package to the user package
+
+ ;; bootstrap0
+ null
+ when
+ unless
+ cond
+ or
+ and
+ atom
+ while
+ dolist
+ assert
+ let*
+ (x!eval bs!eval)
+ 1+
+ 1-
+ last
+ reverse
+ clist*
+ (x!format bs!format)
+ sayf
+ die
+ error
+ numberp
+ symbolp
+ stringp
+ consp
+ 
+ ;backq
+ backq-list
+ backq-list*
+ backq-append
+ backq-nconc
+ backq-cons
+
+ ;;bootstrap1
+ with-gensyms
+ dotimes
+ attr
+ item
+ 
+ ;;ops
+ +
+ -
+ *
+ /
+ //
+ **
+ %
+ band
+ bor
+ bxor
+ lsf
+ rsf
+ ==
+ !=
+ >=
+ >
+ <
+ <=
+
+ ;;cxr
+ cdr 
+ cddr 
+ cdddr 
+ cddddr 
+ cdddddr
+ car 
+ caar 
+ caaar 
+ caaaar 
+ caaaaar
+ cadr 
+ caddr 
+ cadddr 
+ caddddr
+ caar 
+ caadr 
+ cadar 
+ caaddr
+
+ ;;lambda
+ destructuring-bind
+ destructure
+ named-lambda
+ lambda
+ defun
+ named-macro
+ macro
+ defmacro
+ define-compiler-macro
+ parse-call
+
+ ;;iter
+ for
+ foracc
+ dolistacc
+ iterlen
+ dotimesacc
+
+ ;;cons
+ append
+ as-clist
+ list-member
+ nthcdr
+ nth
+ mapcar
+ make-list
+ make-clist
+
+ ;;symbol
+ symbol-name
+
+ ;;setf
+ define-setf-method
+ get-setf-method
+ with-setf-expansion
+ setf
+ defsetf-modifier
+ push
+ incf
+ decf
+ pop
+
+ ;;control
+ ifnot
+ prog1
+ until
+ flet
+ case
+ ecase
+ macrolet
+ symbol-macrolet
+ unwind-protect
+ try-catch
+ with
+ 
+ ;;import
+ import
+ with-import
+
+ ;;multimethod
+ defmethod
+)

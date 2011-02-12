@@ -1,0 +1,176 @@
+;; Operations (binary and unary)
+;; Setups functions and compiler macros
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0)
+  (b:require 'backq)
+  (b:require 'bootstrap1)
+  )
+
+(bs!defun bs!identity (op)
+  op)
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (let ((jamenson (b:__import__ "jamenson.runtime.symbol")))
+    (setq set-symbol-cell jamenson.runtime.symbol.set_symbol_cell)))
+
+
+;; Define Operations
+(eval-when (:compile-toplevel)
+  (setq operations (b:list))
+  (bs!flet ((def (sym binop &keys
+                      (nop 0) (unop '`(prog ,op)))
+                (operations.append
+                            (b:obj :sym sym
+                                   :binop binop
+                                   :nop nop
+                                   :unop unop))))
+    (def '+ 'add)
+    (def '- 'subtract
+      :unop '`(neg ,op))
+    (def '* 'multiply
+      :nop 1)
+    (def '/ 'true-divide
+      :nop 1
+      :unop '`(/ 1 ,op))
+    (def '// 'floor-divide
+      :nop 1
+      :unop '`(/ 1 ,op))
+    (def '** 'power :nop 'noop :unop 'noop)
+    (def '% 'modulo :nop 'noop :unop 'noop)
+    (def 'band 'binand)
+    (def 'bor 'binor)
+    (def 'bxor 'binxor)
+    (def 'lsf 'lshift)
+    (def 'rsf 'rshift)))
+
+;;Create Functions
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun code-operation (op coder &rest args)
+    (cond ((is coder 'noop)
+           `(raise ,(b:ValueError (bs!format "%s is undefined for %d arguments" op.sym (b:len args)))))
+          ((consp coder)
+           ((bs!eval `(bs!lambda (op) ,coder))
+            &rest args))
+          ((symbolp coder)
+           `(,coder ,@(b:clist &rest args)))
+          (t
+           coder)))
+  (bs!defun create-nop-code (op)
+    (code-operation op op.nop))
+  (bs!defun create-unop-code (op arg)
+    (code-operation op op.unop arg))
+  (bs!defun create-binop-code (op larg rarg)
+    (code-operation op op.binop larg rarg)))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!macrolet 
+   ((setup-forms ()
+      `(progn ,@(b:clist &rest 
+             (b:map (bs!lambda (op)
+                      `(bs!defun ,op.sym (&rest args)
+                         (let ((n (b:len args)))
+                           (bs!case n
+                             (0 ,(create-nop-code op))
+                             (1 ,(create-unop-code op '(getitem args 0)))
+                             (2 ,(create-binop-code op '(getitem args 0) '(getitem args 1)))
+                             ;;reduce
+                             (otherwise (,op.sym ,(create-binop-code op '(getitem args 0) '(getitem args 1))
+                                             &rest (getitem args (b:slice 2 b:None))))))))
+                    operations)))))
+   (setup-forms)))
+
+;; Attach Compiler Macros
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!macrolet 
+   ((setup-forms ()
+      `(progn ,@(b:clist &rest 
+           (b:map (bs!lambda (op)
+                    `(setattrq 
+                      ,op.sym
+                      jamenson_compiler_macro
+                      (b:MacroFunction
+                       (bs!named-lambda ,(bs!format "%s-compiler-macro" op.sym) (form)
+                         (bs!case (b:listlen form)
+                           (0 (create-nop-code ,op))
+                           (1 (create-unop-code ,op (car form)))
+                           (2 (create-binop-code ,op (car form) (cadr form)))
+                           ;;reduce (wrap in progn to force addition macro expansion
+                           (otherwise 
+                            `(progn (,,op.sym ,(create-binop-code ,op (car form) (cadr form))
+                                          ,@(cddr form)))))))))
+                  operations)))))
+   (setup-forms)))
+
+;; Comparision Definitions
+(eval-when (:compile-toplevel)
+  (setq comparisions 
+        '((== eq)
+          (!= ne)
+          (>= ge)
+          (>  gt)
+          (<  lt)
+          (<= le))))
+
+
+;;Comparision Functions
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun code-operation (op coder &rest args)
+    (cond ((is coder 'noop)
+           `(raise ,(b:ValueError (bs!format "%s is undefined for %d arguments" op.sym (b:len args)))))
+          ((consp coder)
+           ((bs!eval `(bs!lambda (op) ,coder))
+            &rest args))
+          ((symbolp coder)
+           `(,coder ,@(b:clist &rest args)))
+          (t
+           coder)))
+  (bs!defun create-nop-code (op)
+    (code-operation op op.nop))
+  (bs!defun create-unop-code (op arg)
+    (code-operation op op.unop arg))
+  (bs!defun create-binop-code (op larg rarg)
+    (code-operation op op.binop larg rarg)))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!macrolet 
+   ((setup-forms ()
+      `(progn ,@(b:clist &rest 
+             (b:map (bs!lambda ((cmp-name cmp-sym))
+                      `(bs!defun ,cmp-name (&rest args)
+                         (let ((n (b:len args)))
+                           (when (lt n 2)
+                             (raise (b:ValueError (bs!format "%s takes atleast 2 arguments; given %s" cmp-name n))))
+
+
+                           (dotimes (i (- n 1))
+                             (unless (,cmp-sym (getitem args i)
+                                               (getitem args (+ 1 i)))
+                               (return nil)))
+                           (return t))))
+                    comparisions)))))
+   (setup-forms)))
+
+;; Attach Compiler Macros
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!macrolet 
+   ((setup-forms ()
+      `(progn ,@(b:clist &rest 
+           (b:map (bs!lambda ((cmp-name cmp-sym))
+                    `(setattrq 
+                      ,cmp-name
+                      jamenson_compiler_macro
+                      (b:MacroFunction
+                       (bs!named-lambda ,(bs!format "%s-compiler-macro" cmp-name) (form)
+                         (bs!case (b:listlen form)
+                           ((0 1) `(raise (b:ValueError (bs!format "%s takes atleast 2 arguments; given %s" cmp-name ,n))))
+                           (2 
+                            `(,',cmp-sym ,(car form) ,(cadr form)))
+                           ;;reduce
+                           (otherwise 
+                            (with-gensyms (cmp-tmp)
+                              `(let ((,cmp-tmp ,(cadr form)))
+                                 (and (,,cmp-name ,(car form) ,cmp-tmp)
+                                      (,,cmp-name ,cmp-tmp ,@(cddr form)))))))))))
+                  comparisions)))))
+   (setup-forms)))

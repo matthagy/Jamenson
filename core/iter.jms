@@ -1,0 +1,43 @@
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr 'lambda))
+
+(defmacro for ((itr-place itr-form &body ret-forms)
+               &body body)
+  (with-gensyms (iter lbl-loop lbl-endloop)
+    (when (consp itr-place)
+      (with-gensyms (destruct-sym)
+        (setq body `(destructuring-bind ,itr-place ,destruct-sym ,body))
+        (setq itr-place destruct-sym)))
+    `(let ((,iter (get-iter ,itr-form))
+           ,itr-place)
+       (tagbody
+        ,lbl-loop
+        (foriter  ,lbl-endloop ,itr-place ,iter)
+        ,body
+        (go ,lbl-loop)
+        ,lbl-endloop)
+       ,ret-forms)))
+
+(defmacro foracc ((itr-place itr-form &keys (acc-sym 'acc) acc-init)
+                  &rest-clist body)
+  `(let ((,acc-sym ,acc-init))
+     (for (,itr-place ,itr-form ,acc-sym)
+       ,@body)))
+
+(defmacro dolistacc ((itr-sym itr-form &keys (acc-sym 'acc) acc-init)
+                     &rest-clist body)
+  `(let ((,acc-sym ,acc-init))
+     (dolist (,itr-sym ,itr-form ,acc-sym)
+       ,@body)))
+
+(defun iterlen (op)
+  (let ((acc 0))
+    (for (_ op acc)
+      (setq acc (1+ acc)))))
+
+(defmacro dotimesacc ((itr-sym times &keys (acc-sym 'acc) acc-init)
+                   &rest-clist body)
+  `(let ((,acc-sym ,acc-init))
+     (dotimes (,itr-sym ,times ,acc-sym)
+       ,@body)))

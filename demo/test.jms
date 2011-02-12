@@ -1,0 +1,11 @@
+
+(import 
+ :from dis :import dis :and
+ :from hlab :import objstream)
+
+(dis (lambda (a)
+       (+ 1 2 (if "stuff" 10 20) a.b 3 4 5))
+     )
+
+(say "STUFF" objstream.open open IOError)
+

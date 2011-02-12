@@ -1,0 +1,128 @@
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0)
+  (b:require 'backq)
+  (b:require 'bootstrap1)
+  (b:require 'ops)
+  (b:require 'cxr)
+  (b:require 'lambda)
+  (b:require 'iter))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (setq syntax-error (attr (b:__import__ "jamenson.compiler.translate")
+                           compiler translate syntax_error)))
+
+(define-compiler-macro reverse (lst-form)
+  (with-gensyms (el acc)
+    `(let (,acc)
+       (dolist (,el ,lst-form ,acc)
+         (setq ,acc (,b:cons ,el ,acc))))))
+
+(define-compiler-macro b:listlen (lst-form)
+  (with-gensyms (acc ptr)
+    `(let ((,acc 0)
+           (,ptr ,lst-form))
+       (while ,ptr
+         (setq ,acc (+ 1 ,acc))
+         (setq ,ptr (cdr ,ptr)))
+       ,acc)))
+
+(defun append (&rest lists)
+  (let (acc)
+    (for (l lists (reverse acc))
+      (dolist (op l)
+        (bs!push op acc)))))
+
+(defun as-clist (seq)
+  (let (head acc)
+    (for (op seq head)
+      (let ((cell ((compile-time-value b:cons) op nil)))
+        (if (is acc nil)
+            (setq head cell)
+            (setattrq acc cdr cell))
+        (setq acc cell)))))
+
+(define-compiler-macro b:clist (&rest-clist args)
+  (if (> (b:listlen args) 10)
+      `(b:clist ,@args)
+      (let ((p (parse-call args)))
+        (when (or p.kwds p.star-kwds)
+          (syntax-error nil "bad arguments to clist; no keywords"))
+        (let (acc)
+          (when p.star-args
+                (with-gensyms (star-args)
+                  (setq acc `(let ((,star-args ,p.star-args)) 
+                               (if (is (,attr ,star-args __class__) 
+                                       ,b:cons)
+                                   ,star-args
+                                   (as-clist ,star-args))))))
+          (let ((list-args (b:list p.args)))
+            (list-args.reverse)
+            (for (arg list-args acc)
+              (setq acc `(,b:cons ,arg ,acc))))))))
+
+(setattrq backq-list jamenson_compiler_macro
+          b:clist.jamenson_compiler_macro)
+
+(define-compiler-macro clist* (&rest-clist args)
+  (if (> (b:listlen args) 10)
+      `(clist* ,@args)
+      (let ((p (parse-call args)))
+        (cond ((or p.kwds p.star-kwds)
+               (syntax-error nil "bad arguments to clist*; no keywords"))
+              (p.star-args `(clist* ,@args))
+              (t (let (acc 
+                       (first t)
+                       (list-args (b:list p.args)))
+                   (list-args.reverse)
+                   (for (arg list-args acc)
+                     (setq acc (if first 
+                                   (progn 
+                                     (setq first nil) 
+                                     arg)
+                                   `(,b:cons ,arg ,acc))))))))))
+
+(setattrq backq-list* jamenson_compiler_macro
+          clist*.jamenson_compiler_macro)
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (defun list-member (targ lst)
+    (dolist (el lst nil)
+      (when (eq targ el)
+        (return t)))))
+
+(define-compiler-macro list-member (targ lst)
+  (with-gensyms (g-targ ptr found)
+    `(let ((,g-targ ,targ)
+           (,ptr ,lst)
+           ,found)
+       (while (and ,ptr (not ,found))
+         (setq ,found (eq (car ,ptr)
+                          ,g-targ))
+         (setq ,ptr (cdr ,ptr)))
+       ,found)))
+
+(defun nthcdr (lst n)
+  (while n
+    (setq n (- n 1))
+    (setq lst (cdr lst)))
+  lst)
+
+(defun nth (lst n)
+  (car (nthcdr lst n)))
+
+(defun mapcar (pred lst)
+  (let (head acc)
+    (dolist (el lst head)
+      (let ((cell ((compile-time-value b:cons)
+                   (pred el) nil)))
+        (if (is acc nil)
+            (setq head cell)
+            (setattrq acc cdr cell))
+        (setq acc cell)))))
+
+(defun make-list (&rest seq)
+  (b:list seq))
+
+(defun make-clist (&rest seq)
+  (b:clist seq))

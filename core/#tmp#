@@ -1,0 +1,53 @@
+eval 
+(progn 
+  (call (read_binding (global builtins:require :0x555d10)) 'bootstrap0) 
+  (call (read_binding (global builtins:require :0x54f9b0)) 'backq) 
+  (call (read_binding (global builtins:require :0x54c4b0)) 'bootstrap1) 
+  (call (read_binding (global builtins:require :0x559190)) 'ops) 
+  (call (read_binding (global builtins:require :0x559450)) 'cxr))
+
+eval 
+(write_binding 
+ (global ll-dispatch :0x62c0b0) 
+ (call (read_binding (global builtins:MacroFunction :0x62cd30)) 
+       (function 
+        (progn (write_binding (local #:%ptr2 :0x644710) 
+                              (call (read_binding (global builtins:clist :0x644ef0)) &rest 
+                                    (read_binding (local #:form1 :0x62f0d0))))
+               (write_binding (local patterns :0x644790) nil) 
+               (write_binding (local #:subdestruct3 :0x6441f0) nil) 
+               (write_binding (local #:subdestruct3 :0x6441f0) 
+                              (attrget "car" (read_binding (local #:%ptr2 :0x644710))))
+               (write_binding (local #:%ptr2 :0x644710) 
+                              (attrget "cdr" (read_binding (local #:%ptr2 :0x644710))))
+               (write_binding (local patterns :0x644790) 
+                              (read_binding (local #:%ptr2 :0x644710)))
+               (write_binding (local #:%ptr4 :0x66c530) 
+                              (read_binding (local #:subdestruct3 :0x6441f0)))
+               (write_binding (local el-sym :0x66c5f0) nil) 
+               (write_binding (local state-sym :0x66c670) nil) 
+               (write_binding (local state-sym :0x66c670) 
+                              (attrget "car" 
+                                       (read_binding (local #:%ptr4 :0x66c530)))) 
+               (write_binding (local #:%ptr4 :0x66c530) (attrget "cdr" (read_binding (local #:%ptr4 :0x66c530)))) 
+               (write_binding (local el-sym :0x66c5f0) (attrget "car" (read_binding (local #:%ptr4 :0x66c530)))) 
+               (write_binding (local #:%ptr4 :0x66c530) (attrget "cdr" (read_binding (local #:%ptr4 :0x66c530)))) 
+               (write_binding (local acc :0x66cdf0) nil) 
+               (write_binding (local #:ptr5 :0x6743d0) (read_binding (local patterns :0x644790))) 
+               (tagbody 
+                  ((None :0x0) nop) 
+                  ((#:top-loop6 :0x1) 
+                   (progn 
+                     (if (not_ (is_ (read_binding (local #:ptr5 :0x6743d0)) nil)) 
+                         nil 
+                         (go (#:exit-loop7 :0x2)))
+                     (write_binding (local pat :0x674890) 
+                                    (attrget "car" (read_binding (local #:ptr5 :0x6743d0))))
+                     (write_binding (local #:%ptr8 :0x656b70) 
+                                    (read_binding (local pat :0x674890))) 
+                     (write_binding (local body :0x656950) 
+                                    nil) 
+                     (write_binding (local #:subdestruct9 :0x6569d0) 
+                                    nil) 
+                     (write_binding (local #:subdestruct9 :0x6569d0) (attrget "car" (read_binding (local #:%ptr8 :0x656b70)))) (write_binding (local #:%ptr8 :0x656b70) (attrget "cdr" (read_binding (local #:%ptr8 :0x656b70)))) (write_binding (local body :0x656950) (read_binding (local #:%ptr8 :0x656b70))) (write_binding (local #:%ptr10 :0x6520f0) (read_binding (local #:subdestruct9 :0x6569d0))) (write_binding (local el-pat :0x64dd50) nil) (write_binding (local state-pat :0x64daf0) nil) (write_binding (local state-pat :0x64daf0) (attrget "car" (read_binding (local #:%ptr10 :0x6520f0)))) (write_binding (local #:%ptr10 :0x6520f0) (attrget "cdr" (read_binding (local #:%ptr10 :0x6520f0)))) (write_binding (local el-pat :0x64dd50) (attrget "car" (read_binding (local #:%ptr10 :0x6520f0)))) (write_binding (local #:%ptr10 :0x6520f0) (attrget "cdr" (read_binding (local #:%ptr10 :0x6520f0)))) (write_binding (local acc :0x66cdf0) (call (read_binding (global builtins:cons :0x678f10)) (call (read_binding (global backq-cons :0x67e2d0)) (call (read_binding (global backq-list* :0x67e650)) 'and (call (read_binding (global make-pat-matcher :0x67ea10)) (read_binding (local state-sym :0x66c670)) (read_binding (local state-pat :0x64daf0))) (call (read_binding (global backq-list :0x67ed70)) (call (read_binding (global make-pat-matcher :0x6820f0)) (read_binding (local el-sym :0x66c5f0)) (read_binding (local el-pat :0x64dd50))))) (read_binding (local body :0x656950))) (read_binding (local acc :0x66cdf0)))) (write_binding (local #:ptr5 :0x6743d0) (attrget "cdr" (read_binding (local #:ptr5 :0x6743d0)))) (go (#:top-loop6 :0x1)))) ((#:exit-loop7 :0x2) nop)) (write_binding (local acc :0x66cdf0) (call (read_binding (global builtins:cons :0x6825b0)) (call (read_binding (global backq-cons :0x682870)) True (call (read_binding (global backq-list :0x682b70)) (call (read_binding (global backq-list* :0x682e30)) 'error "unhandled dispatch state=%r el=%r" (read_binding (local state-sym :0x66c670)) (call (read_binding (global backq-list :0x6891f0)) (read_binding (local el-sym :0x66c5f0)))))) (read_binding (local acc :0x66cdf0)))) (call (read_binding (global backq-cons :0x689410)) 'cond (call (read_binding (global reverse :0x689710)) (read_binding (local acc :0x66cdf0))))) "ll-dispatch" None ([Cons(Symbol('local'), Cons(Symbol('form1'), Cons(Symbol('0x62f0d0'), nil)))]) ([]) None None)))
+eval (write_binding (global ll-dispatch :0x62c0b0) none)

@@ -1,0 +1,16 @@
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0)
+  (b:require 'backq)
+  (b:require 'bootstrap1)
+  (b:require 'ops)
+  (b:require 'cxr)
+  (b:require 'lambda)
+  (b:require 'iter)
+  (b:require 'cons))
+
+(defun symbol-name (op)
+  op.print_form)
+
+(define-compiler-macro symbol-name (op)
+  `(,attr ,op print_form))

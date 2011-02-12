@@ -1,0 +1,6 @@
+
+'(say (list core::setf-map))
+
+(let ((acc (b:dict)))
+  (setf (user::item acc "stuff") 10)
+  (say acc))

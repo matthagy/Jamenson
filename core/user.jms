@@ -1,0 +1,35 @@
+;; Populate the user package
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr 'lambda 'iter 'cons
+             'symbol 'setf 'control 'import 'multimethod))
+
+(with-import (:from jamenson.runtime.symbol :import get_package resolve_print_form symbol_cells)
+  (let ((user-pkg (get_package "user")))
+    ;; symbols from core
+    (let ((user-symbols-from-core
+           (compile-time-value
+            (let ((filename "user_symbols.jms"))
+              (with-import (:from jamenson.runtime.read :import readone)
+                (readone (b:open filename) :filename filename :inherit_state nil)))))
+          (core-pkg (get_package "core")))
+      (for (def user-symbols-from-core)
+        (let ((dest-sym (if (consp def) (car def) def))
+              (src-sym (if (consp def) (cadr def) def)))
+          (setf (item symbol_cells (resolve_print_form (symbol-name dest-sym) user-pkg))
+                (item symbol_cells (resolve_print_form (symbol-name src-sym) core-pkg))))))
+    ;; symbols from builtin
+    (with-import (:from jamenson.runtime.builtins :import bltn_pkg)
+      (for (bltn-symbol bltn_pkg.exports)
+        (setf (item symbol_cells (resolve_print_form (symbol-name bltn-symbol) user-pkg))
+              (item symbol_cells bltn-symbol))))))
+
+
+
+
+
+
+
+
+
+

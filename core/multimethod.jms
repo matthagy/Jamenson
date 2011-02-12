@@ -1,0 +1,43 @@
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr 'lambda 'iter 'cons
+             'symbol 'setf 'control 'import))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (import :from jamenson.runtime :import atypes :and
+          :from jamenson.runtime :import multimethod))
+
+(defmacro defmethod (multimethod-form lambda-list &body body)
+  (destructuring-bind
+        (lambda-list type-signature-form)  (parse-type-signature lambda-list)
+    `(.register_method 
+       ,multimethod-form ,type-signature-form
+       (lambda ,lambda-list ,body)
+       (with-import (:from jamenson.runtime :import multimethod)
+         multimethod.only))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (defun parse-type-signature (lambda-list)
+    (let (acc-arg-forms acc-types)
+      (dolist (el (reverse lambda-list) (b:clist acc-arg-forms 
+                                            `(with-import (:from jamenson.runtime :import multimethod)
+                                                 (multimethod.TypeSignature (b:list (b:clist ,@acc-types)) (b:list)))))
+        (cond ((symbolp el)
+               (push el acc-arg-forms)
+               (push atypes.anytype acc-arg-forms))
+              (t
+               (destructuring-bind
+                     (arg tp-form)
+                   el
+                 (push arg acc-arg-forms)
+                 (push (translate-type tp-form) acc-types)))))))
+  (defun translate-type (tp-form)
+    tp-form))
+
+
+
+
+                                                                                                      
+
+
+

@@ -1,0 +1,107 @@
+
+(setq __all__ '(import))
+
+(defmacro import (&env env &rest-clist forms)
+  (let (acc-forms (ptr forms))
+    (while ptr
+      (setq ptr (case (car ptr)
+                  ((from :from)
+                   (destructuring-bind (form new-ptr)
+                       (make-from-import env (cdr ptr))
+                     (push form acc-forms)
+                     new-ptr))
+                  ((and :and import :import)
+                   (cdr ptr))
+                  (&otherwise
+                   (destructuring-bind (form new-ptr)
+                       (make-import env ptr)
+                     (push form acc-forms)
+                     new-ptr)))))
+    `(progn ,@(reverse acc-forms))))
+
+(defun make-import (env ptr)
+  (let ((mod (pop ptr)))
+    (clist `(setq ,(cond ((in (car ptr)
+                              '(as :as))
+                          (pop ptr)
+                          (assert (symbolp (car ptr)))
+                          (pop ptr))
+                         ((consp mod)
+                          (let ((op mod))
+                            (while (consp op)
+                              (setq op (cadr op)))
+                            (assert (symbolp op))
+                            op))
+                         ((symbolp mod)
+                          mod)
+                         (t (error "bad mod %s in import" mod)))
+                  ,(build-import env mod))
+           ptr)))
+
+(defun wrap-attr (attr-form wrap-form)
+  (if (symbolp attr-form)
+      wrap-form
+      (destructuring-bind 
+            (sym obj attr) attr-form
+        `(attr ,(wrap-attr obj wrap-form)
+               ,attr))))
+
+(defun make-from-import (env ptr)
+  (let ((mod (pop ptr)) fromlist)
+    (assert (or (symbolp mod)
+                (consp mod)))
+    (when (in (car ptr)
+              '(import :import))
+      (pop ptr))
+    (while (and ptr
+                (not-in (car ptr)
+                       '(and :and)))
+      (assert (symbolp (car ptr)))
+      (push (pop ptr)
+            fromlist))
+    (clist 
+     (if (in '* fromlist)
+         `(,import-all-update ,env.globals ,(wrap-attr mod (build-import env mod)))
+         (with-gensyms ((tmp (stringify-attr mod)))
+           `(let ((,tmp ,(build-import env mod fromlist)))
+              ,@(let (acc)
+                     (dolist (from fromlist acc)
+                       (push `(setq ,from (getattrq ,tmp ,from))
+                             acc))))))
+     ptr)))
+
+(defun import-all-update (gbls mod)
+  (cond ((hasattr mod "__all__")
+         (for (attr mod.__all__)
+           (setf (item gbls attr)
+                 (getattr mod attr))))
+        (t (for (attr (dir mod))
+             (unless (attr.startswith "_")
+               (setf (item gbls attr)
+                     (getattr mod attr)))))))
+
+(defun build-import (env op &keys fromlist)
+  (assert (or (symbolp op)
+              (consp op)))
+  `(,(env.compileTimeResolve 
+          (env.translate '__import__))
+     ,(stringify-attr op)
+     :fromlist ,(map str fromlist)))
+
+(defun stringify-attr (op)
+  (let (acc)
+    (while (consp op)
+      (assert (in (car op) '(%attr attr a getattrq)))mod
+      (push (symbol-name (caddr op)) acc)
+      (setq op (cadr op)))
+    (assert (symbolp op))
+    (push (symbol-name op) acc)
+    ((a "." join) acc)))
+
+(when nil
+  (import 
+   brooke.bompiler.ir as I and
+   operator and
+   from sys import stdout stdin and
+   from hlab.domain import *))
+

@@ -1,0 +1,222 @@
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr 'lambda 'iter 'cons 'symbol))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (let (collections)
+    (bs!import collections)
+    (setq setf-map (collections.defaultdict 
+                                (lambda ()
+                                  (b:obj :rest-variants (b:dict)
+                                         :unrest-variants (b:dict)))))))
+
+(defmacro define-setf-method (access-fn lambda-list &body body)
+  (assert (symbolp access-fn))
+  (let ((p (ll-parse lambda-list)))
+    (assert (not p.remaining-keys))
+    (with-gensyms (func setf-data)
+      (let ((n-positional (b:listlen p.positional))
+            acc)
+        (dotimes (n-optional 
+                   (1+ (b:listlen p.keywords))
+                  `(eval-when (:compile-toplevel :load-toplevel)
+                     (let ((,func (named-lambda ,(bs!format "set-%s" access-fn) ,lambda-list ,body))
+                           (,setf-data (getitem setf-map ',access-fn)))
+                       ,@acc)))
+          (bs!push
+           `(setitem ,(if (or p.rest p.remaining-keys) 
+                          `(b:attr ,setf-data rest-variants) 
+                          `(b:attr ,setf-data unrest-variants))
+                     ,(+ n-positional n-optional)
+                     ,func)
+           acc))))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (defun get-setf-method (place)
+    (when (symbolp place)
+      (with-gensyms (store)
+        (return (b:clist '() '() `(,store)
+                         `(setq ,place ,store) 
+                         place))))
+    (assert (consp place))
+    (assert (symbolp (car place)))
+    (let ((setf-data (getitem setf-map (car place)))
+          (n (b:listlen (cdr place))))
+      ((or (setf-data.unrest-variants.get n)
+           (let (best-meth (n-best 0))
+             (for ((n-meth meth) (setf-data.rest-variants.iteritems))
+               (when (and (> n-meth n-best)
+                          (<= n-meth n))
+                 (setq best-meth meth)))
+             (unless best-meth
+               (raise (b:LookupError (bs!format 
+                                      "no good setf for %s with %d arguments"
+                                      (car place)
+                                      n))))
+             best-meth))
+       &rest (cdr place)))))
+
+(defmacro with-setf-expansion (setf-form-place place &body body)
+  `(destructuring-bind ,setf-form-place (get-setf-method ,place)
+     ,body))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (defun make-setf-lets (tmps values)
+    (let (acc)
+      (for ((tmp value) (b:zip tmps values) acc)
+        (setq acc (b:cons (b:clist tmp value) acc))))))
+
+(defmacro setf (place value)
+  (with-setf-expansion
+    (tmps values (store) store-form access-form) place
+    `(let ,(make-setf-lets tmps values)
+       (let ((,store ,value))
+         ,store-form
+         ,store))))
+
+(defmacro defsetf-modifier (name (current-value &rest-clist args) &body modify-form)
+  (with-gensyms (place tmps values store store-form)
+    `(defmacro ,name ,(bs!append  (b:clist place) args)
+       (with-setf-expansion 
+           (,tmps ,values (,store) ,store-form ,current-value) ,place
+           `(let ,(make-setf-lets ,tmps ,values)
+              (let ((,,store ,,modify-form))
+                 ,,store-form
+                 ,,store))))))
+
+(define-setf-method car (op)
+  (with-gensyms (tmp store)
+    (b:clist `(,tmp) `(,op) `(,store)
+           `(setattrq ,tmp car ,store)
+           `(getattrq ,tmp car))))
+
+(define-setf-method cdr (op)
+  (with-gensyms (tmp store)
+    (b:clist `(,tmp) `(,op) `(,store)
+           `(setattrq ,tmp cdr ,store)
+           `(getattrq ,tmp cdr))))
+
+(define-setf-method cadr (op)
+  (with-gensyms (tmp store)
+    (b:clist `(,tmp) `((cdr ,op)) `(,store)
+           `(setattrq ,tmp car ,store)
+           `(getattrq ,tmp cdr))))
+
+(define-setf-method cddr (op)
+  (with-gensyms (tmp store)
+    (b:clist `(,tmp) `((cdr ,op)) `(,store)
+           `(setattrq ,tmp cdr ,store)
+           `(getattrq ,tmp cdr))))
+
+(define-setf-method nth (op n)
+  (with-gensyms (tmp store)
+    (b:clist `(,tmp) `((nthcdr ,op ,n)) `(,store)
+           `(setattrq ,tmp car ,store)
+           `(getattrq ,tmp car))))
+
+(define-setf-method nthcdr (op n)
+  (with-gensyms (tmp store)
+    (b:clist `(,tmp) `((nthcdr ,op (- ,n 1))) `(,store)
+           `(setattrq ,tmp cdr ,store)
+           `(getattrq ,tmp cdr))))
+
+(define-setf-method attr (op attr)
+  (assert (symbolp attr))
+  (with-gensyms (tmp store)
+    (b:clist `(,tmp) `(,op) `(,store)
+           `(setattrq ,tmp ,attr ,store)
+           `(getattrq ,tmp ,attr))))
+
+(define-setf-method a (op attr)
+  (get-setf-method `(attr ,op ,attr)))
+
+(define-setf-method b:attr (op attr)
+  (get-setf-method `(attr ,op ,attr)))
+
+(define-setf-method item (op key)
+  (with-gensyms (tmp store tkey)
+    (b:clist `(,tmp ,tkey) `(,op ,key) `(,store)
+           `(setitem ,tmp ,tkey ,store)
+           `(getitem ,tmp ,tkey))))
+
+(define-setf-method itemq (op key)
+  (assert (symbolp key))
+  (setq key `(%quote ,key))
+  (with-gensyms (tmp store)
+    (b:clist `(,tmp) `(,op) `(,store)
+             `(setitem ,tmp ,key ,store)
+             `(getitem ,tmp ,key))))
+
+(defmacro push (op-form place)
+  (with-setf-expansion
+      (tmps values (store) store-form access-form) 
+    place
+    `(let ,(make-setf-lets tmps values)
+       (let ((,store (b:cons ,op-form ,access-form)))
+         ,store-form
+         ,store))))
+
+(defsetf-modifier incf (current-value &keys (delta 1))
+  `(+ ,current-value ,delta))
+
+(defsetf-modifier decf (current-value &keys (delta 1))
+  `(- ,current-value ,delta))
+
+(defmacro postincf (place &keys (delta 1))
+  (with-setf-expansion
+      (tmps values (store) store-form access-form) place
+      (with-gensyms (initial-value)
+        `(let ,(make-setf-lets tmps values)
+           (let* ((,initial-value ,access-form)
+                  (,store (+ ,initial-value ,delta)))
+             ,store-form
+             ,initial-value)))))
+
+(defmacro postdecf (place &keys (delta 1))
+  `(postincf ,place (- ,delta)))
+
+(defmacro pop (place)
+  (with-setf-expansion
+    (tmps values (store) store-form access-form) place
+    (with-gensyms (list)
+      `(let ,(make-setf-lets tmps values)
+         (let* ((,list ,access-form)
+                (,store (cdr ,list)))
+           ,store-form
+           (car ,list))))))
+
+(defmacro define-setf-aliases (&rest-clist stuff)
+  (let* ((jamenson (b:__import__ "jamenson.runtime.symbol"))
+         (s jamenson.runtime.symbol))
+    `(progn ,@(mapcar (lambda ((symbol lambda-list))
+                        `(define-setf-method
+                             ,(s.resolve_and_export_print_form symbol.print_form s.user_package)
+                             ,lambda-list
+                           (get-setf-method (b:clist ',symbol ,@lambda-list))))
+                      stuff))))
+(define-setf-aliases
+  (car (op))
+  (cdr (op))
+  (cadr (op))
+  (cddr (op))
+  (nth (op n))
+  (nthcdr (op n))
+  (attr (op attr))
+  (a (op attr))
+  (item (op key))
+  (itemq (op key)))
+
+(defsetf-modifier user::incf (current-value &keys (delta 1))
+  `(incf ,current-value ,delta))
+
+(defsetf-modifier user::decf (current-value &keys (delta 1))
+  `(decf ,current-value ,delta))
+
+(defmacro user::postincf (current-value &keys (delta 1))
+  `(postincf ,current-value ,delta))
+
+(defmacro user::postdecf (current-value &keys (delta 1))
+  `(postdecf ,current-value ,delta))
+
+
+

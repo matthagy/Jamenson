@@ -1,0 +1,144 @@
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr 'lambda 'iter 'cons 'symbol 'setf))
+
+(defmacro ifnot (form false-form &keys (true-form t))
+  `(if (not ,form)
+       false-form
+       true-form))
+
+(defmacro prog1 (first-form &body body)
+  (with-gensyms (tmp)
+    `(let ((,tmp ,first-form))
+       (progn
+         ,body
+         ,tmp))))
+
+(defmacro until (expr &body body)
+  `(while (not ,expr)
+     ,body))
+
+(defmacro flet (flets &body body)
+  `(let ,(let (acc)
+           (for ((sym &rest _) flets acc)
+             (assert (symbolp sym))
+             (push sym acc)))
+     (progn
+       ,@(let (acc)
+           (for ((sym lambda-list &rest-clist flet-body) 
+                 flets acc)
+             (push `(setq ,sym 
+                       (named-lambda ,sym ,lambda-list ,@flet-body))
+                   acc))))
+     ,body))
+
+(defun make-case (form-sym form cases)
+  (flet ((maketest (el)
+           (cond ((is el '&otherwise)
+                  (error "invalid &otherwise clause in case"))
+                 ((symbolp el)
+                  `(is ,form-sym ',el))
+                 ((atom el)
+                  `(eq ,form-sym ,el))
+                 (t `(or ,@(bs!map maketest el))))))
+    `(let ((,form-sym ,form))
+       ,(let (tests
+              (cases (reverse cases)))
+             (when (is (caar cases)
+                       '&otherwise)
+               (setq tests `(progn ,@(cdar cases)))
+               (pop cases))
+             (for ((test &body body) cases)
+               (setq tests `(if ,(maketest test)
+                                ,body
+                                ,tests)))
+             tests))))
+
+(defmacro case (form &rest-clist cases)
+  (with-gensyms (switch)
+    (make-case switch form cases)))
+
+(defmacro ecase (form &rest-clist cases)
+  (with-gensyms (switch)
+    (make-case 
+     switch form
+     (append cases 
+             `((&otherwise (raise (b:RuntimeError 
+                                   (bs!format "unhandled case %s" ,switch)))))))))
+
+
+(defmacro raisefmt (exc-form pattern-form &rest-clist arg-forms)
+  `(raise (,exc-form (bs!format ,pattern-form ,@arg-forms))))
+
+(defmacro macrolet (macrolets &body body)
+  (error "macrolet not fixedup")
+  '(&env env macrolets &body body) ;;old lambda list
+  (let ((old-scope env.scope) form)
+    (setattrq env scope (old-scope.createChild))
+    (for ((name lambdalist &rest-clist macrobody) macrolets)
+      (env.scope.registerMacrolet 
+           name
+           (x!eval `(named-macro ,name ,lambdalist ,@macrobody)
+                      :env env)))
+    (prog1
+        (env.translate body)
+      (setattrq env scope old-scope))))
+
+(defmacro symbol-macrolet (macrolets &body body)
+  (error "symbol-macrolet not fixedup")
+  '(&env env macrolets &body body) ;;old lambda list
+  (let ((old-scope env.scope) form)
+    (setattrq env scope (old-scope.createChild))
+    (for ((name form) macrolets)
+      (env.scope.registerSymbolMacrolet name form))
+    (prog1
+        (env.translate body)
+      (setattrq env scope old-scope))))
+
+(defmacro unwind-protect (protected-form &body cleanup-forms)
+  (with-gensyms (res)
+    `(let (,res) 
+       (tryfinally 
+        (setq ,res ,protected-form)
+        ,cleanup-forms)
+       ,res)))
+
+(defmacro try-catch (wrapped-form &rest-clist catch-forms)
+  (with-gensyms (res exc-tp)
+    `(let (,res ,exc-tp) 
+       (trycatch 
+        (setq ,res ,wrapped-form)
+        (,exc-tp nil nil)
+        ,(let ((inner `(%raise0)))
+              (for ((match-form &body match-body) (reverse catch-forms) inner)
+                (setq inner `(if (exception-match 
+                                  ,exc-tp 
+                                  ,(if (and (consp match-form)
+                                            (is (car match-form)
+                                                '&oneof))
+                                       `(,b:tuple (,b:clist ,@(cdr match-form)))
+                                       match-form))
+                                 (setq ,res ,match-body)
+                                 ,inner)))))
+       ,res)))
+
+(defmacro with ((form &keys variable) &body body)
+  "rough translation of Python's with"
+  (with-gensyms (mgr exit exc tp value tb res)
+    (let ((variable (or variable (b:gensym "withholder"))))
+      `(let* ((,mgr ,form)
+              (,exit (..__exit__ ,mgr))
+              (,variable (.__enter__ ,mgr))
+              (,exc b:True)
+              ,tp ,value ,tb)
+         (unwind-protect (trycatch 
+                          (setq ,res ,body) 
+                          (,tp ,value ,tb)
+                          (setq ,exc b:False)
+                          (unless (,exit ,tp ,value ,tb)
+                            (raise)))
+           (when ,exc
+             (,exit b:None b:None b:None)))
+         ,res))))
+
+

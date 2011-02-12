@@ -1,0 +1,56 @@
+;; bootstrapping utilties that use backquote reader
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0)
+  (b:require 'backq))
+
+(bs!defmacro with-gensyms (defs &rest body)
+  (let* (acc-lets)
+    (bs!flet ((make-let (sym base)
+                 (bs!push `(,sym (b:gensym (b:str ,base)))
+                          acc-lets)))
+             (dolist (def defs)
+               (cond ((symbolp def)
+                      (make-let def `',def))
+                     ((consp def)
+                      (make-let (car def)
+                                (cadr def)))
+                     (t (error "bad gensyms def")))))
+    `(let ,(reverse acc-lets) ,@(b:clist &rest body))))
+
+(bs!defmacro bs!for ((itr-sym itr-form &rest ret-forms)
+                     &rest body)
+  (with-gensyms (iter lbl-loop lbl-endloop)
+    `(let ((,iter (get-iter ,itr-form))
+           ,itr-sym)
+       (tagbody
+          ,lbl-loop
+          (foriter ,lbl-endloop ,itr-sym ,iter)
+          (progn ,@(b:clist &rest body))
+          (go ,lbl-loop)
+          ,lbl-endloop)
+       (progn ,@(b:clist &rest ret-forms)))))
+
+(bs!defun bs!append (&rest lists)
+  (let (acc)
+    (bs!for (l lists (reverse acc))
+      (bs!for (op l)
+         (bs!push op acc)))))
+
+(bs!defmacro dotimes ((var times &rest ret) &rest body)
+  `(bs!for (,var (b:xrange ,times) ,@ret)
+           ,@body))
+
+(bs!defmacro attr (op &rest attrs)
+  `(b:attr ,op ,@(b:clist &rest 
+                          (b:map (bs!lambda (attr)
+                                   (b:make-attribute (symbol-name attr)))
+                                 attrs))))
+
+(bs!defmacro item (collection key)
+  `(getitem ,collection ,key))
+
+(bs!defun bs!mapcar (func lst)
+  (let (acc)
+    (dolist (el lst (reverse acc))
+      (bs!push (func el) acc))))

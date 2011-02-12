@@ -1,0 +1,413 @@
+;; Defines a more powerful lambda list destructurer which is used
+;; to create a new destructuring-bind, named-lambda, lambda, defun, 
+;; and defmacro
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (setq no-value-provided '&!lambda!no-value-provided!)
+  (setq qno-value-provided `',no-value-provided)
+  (bs!defun make-pat-matcher (sym pat)
+    (cond ((consp pat)
+           `(or ,@(let (acc)
+                       (dolist (subpat pat acc)
+                         (bs!push (make-pat-matcher sym subpat)
+                                  acc)))))
+          ((is pat '*)
+           t)
+          ((symbolp pat)
+           `(is ,sym ',pat))
+          (t 
+           (error "bad pattern form %s" pat)))))
+
+(eval-when (:compile-toplevel)
+  (bs!defmacro ll-dispatch ((state-sym el-sym) &rest patterns)
+    "helper macro for ll-parse which based around a state machine.  Makes a cond
+for dispatching based on current state and value of element of lamba list currently
+being processed"
+    (let (acc)
+      (dolist (pat patterns)
+        (bs!destructuring-bind ((state-pat el-pat) &rest body) pat
+          (bs!push `((and ,(make-pat-matcher state-sym state-pat)
+                          ,(make-pat-matcher el-sym el-pat))
+                     ,@body)
+                   acc)))
+      (bs!push `(t (error "unhandled dispatch state=%r el=%r" ,state-sym ,el-sym))
+               acc)
+      `(cond ,@(reverse acc)))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun ll-parse (lambda-list)
+    "parses a lambda list"
+    (let (positional keywords 
+          rest-var rest-tp
+          keys-var 
+          destructs
+          el
+          (state 'positional)
+          (ll-error (bs!lambda (msg &rest args)
+                      (raise (b:ValueError (bs!format msg &rest args)))))
+          (popel (bs!lambda ()
+                   (assert lambda-list)
+                   (let ((tmp (car lambda-list)))
+                     (setq lambda-list (cdr lambda-list))
+                     tmp))))
+      (bs!macrolet 
+       ((transition (sym)
+                    (assert (symbolp sym))
+                    `(setq state ',sym)))
+       (while lambda-list
+         (setq el (popel))
+         (ll-dispatch (state el)
+          ((positional &keys)
+           (transition keys))
+          (((positional keys) (&rest &rest-clist &body))
+           (setq rest-tp (bs!case el
+                           (&rest 'tuple)
+                           (&rest-clist 'clist)
+                           (&body 'body)
+                           (otherwise (error "fuck"))))
+           (transition rest))
+          (((positional keys) &remaining-keys)
+           (transition rest-kwds))
+          ((positional *)
+           (cond ((consp el)
+                  (with-gensyms (destruct-arg)
+                    (bs!push destruct-arg positional)
+                    (bs!push (b:clist destruct-arg el)
+                             destructs)))
+                 ((symbolp el)
+                  (bs!push el positional))
+                 (t (ll-error "bad positional form %s" el))))
+          ((keys &keys)
+           (ll-error "extra &keys"))
+          ((keys *)
+           (cond ((consp el)
+                  (when (or (null (cdr el))
+                            (cddr el)
+                            (not (symbolp (car el))))
+                    (ll-error "bad default key definition %s" el))
+                  (bs!push el keywords))
+                 ((symbolp el)
+                  (bs!push (b:clist el nil)
+                           keywords))
+                 (t (ll-error "bad keyword %s" el))))
+          ((rest &rest)
+           (ll-error "extra &rest"))
+          ((rest &keys)
+           (ll-error "&keys after &rest"))
+          ((rest &remaining-keys)
+           (unless rest-var
+             (ll-error "&rest symbol not specified"))
+           (transition rest-kwds))
+          ((rest *)
+           (cond (rest-var 
+                  (ll-error "extra after &rest symbol"))
+                 ((not (symbolp el))
+                  (ll-error "bad form following &rest %s; expecting symbol" el))
+                 ((.startswith (symbol-name el) "&")
+                  (ll-error "special symbol %s following &rest" el))
+                 (t 
+                  (setq rest-var el))))
+          ((rest-kwds &remaining-keys)
+           (ll-error "extra &remaining-keys"))
+          ((rest-kwds (&rest &keys))
+           (ll-error "%s after &remaining-keys" el))
+          ((rest-kwds *)
+           (cond (keys-var
+                  (ll-error "extra after &remaining-keys symbol"))
+                 ((not (symbolp el))
+                  (ll-error "bad form following &remaining-keys %s; expecting symbol" el))
+                 ((.startswith (symbol-name el) "&")
+                  (ll-error "special symbol %s following &remaining-keys" el))
+                 (t 
+                  (setq keys-var el)))))))
+      (b:obj :positional (bs!reverse positional)
+             :keywords (bs!reverse keywords)
+             :rest rest-var
+             :rest-tp rest-tp
+             :remaining-keys keys-var
+             :destructs destructs))))
+
+(bs!defmacro destructuring-bind (lambda-list form &rest body)
+  "full-blown destructuring-bind that compiles code specifically for
+destructuring the specified pattern"
+  (let ((p (ll-parse lambda-list)))
+    (with-gensyms (form-sym)
+      `(let ((,form-sym ,form))
+         (let ,(let ((acc p.positional))
+                    (bs!for (k p.keywords)
+                            (bs!push `(,(car k) ,qno-value-provided)
+                                     acc))
+                    (when p.rest
+                          (bs!push p.rest acc))
+                    (when p.remaining-keys
+                          (bs!push p.remaining-keys acc))
+                    acc)
+           ,(make-destruct p lambda-list form-sym body))))))
+
+(bs!defmacro destructure (lambda-list form &rest body)
+  (with-gensyms (form-sym)
+    `(let ((,form-sym ,form))
+       ,(make-destruct (ll-parse lambda-list) lambda-list form-sym body))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun make-destruct (p lambda-list form-sym body)
+    `(progn
+       ,(cond ((or p.keywords
+                   p.remaining-keys)
+               (make-db-full lambda-list p form-sym))
+              (t ;; specialize patterns that don't include keywords (common)
+               (cond ((and p.positional p.rest)
+                      (make-db-positional-rest lambda-list p.positional 
+                                               p.rest p.rest-tp form-sym))
+                     (p.positional 
+                        `(unpack_seq ,form-sym ,@p.positional))
+                     (p.rest 
+                        (make-db-rest p.rest p.rest-tp `(get-iter ,form-sym)))
+                     (t (make-empty-iter-check `(get-iter ,form-sym)
+                                               "expected empty sequence")))))
+       ,(wrap-destructs p.destructs 
+                        (let ((inner `(progn ,@(b:clist &rest body))))
+                          inner))))
+
+  (bs!defun make-db-positional-rest (lambda-list positional rest-var rest-tp form-sym)
+    "compile destructuring bind for pattern that only has 0 or 
+more positional elements and a rest collector"
+    (make-db-positional-unpacker 
+     lambda-list positional form-sym
+     (bs!lambda (itr-sym)
+       (make-db-rest rest-var rest-tp itr-sym)))))
+
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun make-db-full (lambda-list p form-sym)
+    "full blown destructuring bind that handles positional, keywords, 
+rest arguments, and rest keys.
+compiles a destructurer specifically for the specified signature"
+    (make-db-positional-unpacker 
+     lambda-list p.positional form-sym
+     (bs!lambda (itr-sym)
+       (with-gensyms (ptr unset-key)
+         `(let (,ptr ,unset-key)
+            (progn ,@(bs!map (bs!lambda (k)
+                               `(setq ,(car k) ,qno-value-provided))
+                             p.keywords))
+            ,(when p.remaining-keys
+                   `(setq ,p.remaining-keys (,dict)))
+            ,(when p.rest
+                   `(setq ,p.rest nil))
+            ,(make-stop-iteration-catch
+              `(while t
+                 (setq ,ptr (.next ,itr-sym))
+                 (cond ((and (is (attr ,ptr __class__)
+                                 ,b:Symbol)
+                             (b:keywordp ,ptr))
+                        (setq ,unset-key ,ptr)
+                        (setq ,ptr (.next ,itr-sym))
+                        (bs!case (..print_form ,unset-key)
+                          ,@(let (acc)
+                                 (dolist (kwd p.keywords)
+                                   (bs!push 
+                                    `(,(..print_form (car kwd))
+                                      (unless (is ,(car kwd) ,qno-value-provided)
+                                        (raise
+                                         ,(b:ValueError (bs!format "multiple values for keyword %s" (car kwd)))))
+                                      (setq ,(car kwd) ,ptr))
+                                    acc))
+                                 (bs!push 
+                                  `(otherwise 
+                                    ,(if p.remaining-keys
+                                         `(setitem ,p.remaining-keys 
+                                                   (symbol-name ,unset-key)
+                                                   ,ptr)
+                                         `(raise (b:ValueError 
+                                                  (bs!format ,(bs!format "invalid keyword %%s for destructuring %s"
+                                                                         (b:str lambda-list)) ,unset-key)))))
+                                  acc)
+                                 (bs!reverse acc)))
+                        (setq ,unset-key nil))
+                       (t ;;not a keyword
+                        ;;loop through keywords until we find when not set
+                        (cond ,@(let (acc)
+                                     (dolist (kwd p.keywords)
+                                       (bs!push `((is ,(car kwd) ,qno-value-provided)
+                                                  (setq ,(car kwd) ,ptr))
+                                                acc))
+                                     ;; no unset keywords, either a rest or error
+                                     (bs!push `(t ,(if p.rest
+                                                       `(setattrq p rest (b:cons ,ptr ,p.rest))
+                                                       `(raise ,(compile-time-value
+                                                                 (b:ValueError "extra argument(s) for destructuring-bind")))))
+                                              acc)
+                                     (bs!reverse acc))))))
+              `(when ,unset-key
+                 (raise (b:ValueError (bs!format "no value for keyword %s" ,unset-key)))))
+            ,(let (acc)
+                  (dolist (kwd p.keywords `(progn ,@(bs!reverse acc)))
+                    (bs!push
+                     `(when (is ,(car kwd)
+                                ,qno-value-provided)
+                        (setq ,(car kwd) ,(cadr kwd)))
+                     acc)))
+            ,(when p.rest
+                   `(progn
+                      (setq ,p.rest (reverse ,p.rest))
+                      ,(unless (is p.rest-tp 'clist)
+                               (make-db-rest p.rest p.rest-tp p.rest))))))))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun make-db-positional-unpacker (lambda-list positional form-sym &keys make-body)
+    "compiles expression to parse out a specific number of positional forms from
+an iterator.  excepts an optional function make-lambda that can be used
+to create code in the context of the iterator once positional arguments have been parsed"
+    (with-gensyms (itr)
+      `(let ((,itr (get-iter ,form-sym)))
+         ,(when positional
+                (make-stop-iteration-catch 
+                 `(progn ,@(let (acc)
+                                (bs!for (p positional (bs!reverse acc))
+                                        (bs!push 
+                                         `(setq ,p (.next ,itr))
+                                         acc))))
+                 `(raise ,(b:ValueError 
+                           (bs!format "unpack %s requires atleast %s arguments" 
+                                      lambda-list
+                                      (b:len (b:list positional)))))))
+         ,(and make-body (make-body itr))))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun make-empty-iter-check (itr-form errmsg)
+    (make-stop-iteration-catch 
+     `(progn
+        ((attr ,itr-form next))
+        (raise ,(b:ValueError errmsg)))
+     nil)))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun make-stop-iteration-catch (protected-form catch-form)
+    (with-gensyms (exc-tp)
+      `(let (,exc-tp)
+         (trycatch 
+          ,protected-form
+          (,exc-tp)
+          (progn
+            (unless (exception-match ,exc-tp ,b:StopIteration)
+              (raise))
+            ,catch-form))))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun wrap-destructs (destructs body)
+    (bs!for (d destructs body)
+            (bs!destructuring-bind (sym form) d
+              (setq body `(destructuring-bind ,form ,sym ,body))))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun make-db-rest (rest-var rest-tp form)
+    `(setq ,rest-var ,(bs!case rest-tp
+                               (tuple `(,b:tuple ,form))
+                               (clist `(,b:clist &rest ,form))
+                               (body `(,b:cons 'progn (,b:clist &rest ,form)))
+                               (otherwise (error "bad rest-tp %s" rest-tp))))))
+
+(bs!defmacro named-lambda (name lambda-list &rest body)
+  (let* ((body `(progn ,@body))
+         (p (ll-parse lambda-list))
+         (doc (when (stringp (car body))
+                (car body))))
+    (when p.destructs
+          (setq body (wrap-destructs p.destructs body)))
+    (unless (or (null p.rest-tp) 
+                (eq p.rest-tp 'tuple))
+      (setq body `(progn
+                    ,(make-db-rest p.rest p.rest-tp p.rest)
+                    ,body)))
+    (destructuring-bind
+          (kwds defaults) (or (b:zip &rest p.keywords) '(nil nil))
+      `(function ,body               ;; body
+                 ,(if (symbolp name) ;;name
+                      (symbol-name name)
+                      name)
+                 ,doc                          ;;doc
+                 ,(b:clist &rest p.positional) ;;args
+                 ,(b:clist &rest kwds)         ;;kwds
+                 ,(b:clist &rest defaults)     ;;defaults
+                 ,p.rest                       ;;rest-var
+                 ,p.remaining-keys             ;;keys-vars
+                 ))))
+
+;;FINALLY
+(bs!defmacro lambda (lambda-list &rest body)
+  `(named-lambda "<lambda>" ,lambda-list ,@(b:clist &rest body)))
+
+(bs!defmacro defun (name lambda-list &rest body)
+  `(setq ,name (named-lambda ,name ,lambda-list ,@(b:clist &rest body))))
+
+(bs!defmacro named-macro (name lambda-list &rest body)
+  (let* ((body `(progn ,@body))
+         (destruct-symbol 
+          (cond ((and (null (cddr lambda-list))
+                      (is (car lambda-list) '&rest-clist)
+                      (symbolp (cadr lambda-list)))
+                 (cadr lambda-list))
+                (t (let ((destruct-symbol (b:gensym "destruct-symbol")))
+                     (setq body `(destructuring-bind 
+                                       ,lambda-list ,destruct-symbol
+                                   ,body))
+                     destruct-symbol)))))
+    `(b:MacroFunction (named-lambda ,name 
+                               (,destruct-symbol)
+                               ,body))))
+
+(bs!defmacro macro (lambda-list &rest body)
+  `(named-macro "<macro>" ,lambda-list ,@(b:clist &rest body)))
+
+(bs!defmacro defmacro (name lambda-list &rest body)
+  `(eval-when (:load-toplevel :compile-toplevel)
+     (setq ,name (named-macro ,name ,lambda-list ,@(b:clist &rest body)))))
+
+(defmacro define-compiler-macro (func lambda-list &rest-clist body)
+  `(eval-when (:load-toplevel :compile-toplevel) 
+     (setattrq ,func jamenson_compiler_macro
+               (named-macro "<compiler-macro>" ,lambda-list ,@body))))
+
+(defun parse-call (form &keys 
+                   (parse-error 
+                    (lambda (msg &rest args)
+                      (raise (b:ValueError (bs!format msg &rest args))))))
+  (let (args (kwds (b:dict)) 
+        star-args star-kwds
+        (ptr form))
+    (while ptr
+      (cond ((is (car ptr) '&remaining-keys)
+             (unless (cdr ptr)
+               (parse-error "&remaining-keys without form"))
+             (when star-kwds
+               (parse-error "multiple &remaining-keys"))
+             (setq star-kwds (cadr ptr))
+             (setq ptr (cddr ptr)))
+            ((is (car ptr) '&rest)
+                 (unless (cdr ptr)
+                   (parse-error "&rest without form"))
+                 (when star-args
+                   (parse-error "multiple &rest"))
+                 (setq star-args (cadr ptr))
+                 (setq ptr (cddr ptr)))
+            ((and (symbolp (car ptr))
+                  (.startswith (symbol-name (car ptr)) ":"))
+             (let ((kwd (b:make-keyword (getitem (car ptr) 
+                                                 (buildslice 1)))))
+               (unless (cdr ptr)
+                 (parse-error "keyword %s without form" kwd))
+               (when (in kwd kwds)
+                 (parse-error "multiple use of keyword %s" kwd))
+               (setf (item kwds kwd)
+                     (cadr ptr))
+               (setq ptr (cddr ptr))))
+            (t (bs!push (car ptr) args)
+               (setq ptr (cdr ptr)))))
+    (b:obj :args (bs!reverse args)
+           :kwds kwds
+           :star-args star-args
+           :star-kwds star-kwds)))

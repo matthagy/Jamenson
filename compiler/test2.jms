@@ -1,0 +1,8 @@
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'test))
+
+(say "hell yeah")
+
+(dolist (el '(a b c))
+  (say el))

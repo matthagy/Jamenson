@@ -1,0 +1,550 @@
+; Minimum Framework to Load Back Quote Reader
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (setq sys (b:__import__ "sys"))  
+  (b:__import__ "jamenson.runtime.builtins")
+  (b:__import__ "jamenson.compiler.translate")
+  (b:__import__ "jamenson.runtime.symbol")
+  (let ((jamenson (b:__import__ "jamenson")))
+    (setq set_symbol_cell jamenson.runtime.symbol.set_symbol_cell)
+    (if (not (jamenson.runtime.symbol.symbol_visibility
+                       'b::say))
+        (progn
+          (jamenson.runtime.symbol.export_symbol 'b::say
+                    (jamenson.runtime.symbol.get_package "builtins"))
+          (jamenson.runtime.symbol.import_symbol 'b::say)))
+    (setq syntax-error jamenson.compiler.translate.syntax_error)))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (set_symbol_cell 'b:say
+                   (function (let ((bytes (add (.join " " (b:map b:str args)) "\n")))
+                               (sys.stdout.write bytes)
+                               bytes)
+                             "say" "" nil nil nil args))
+  (setq bs!defmacro 
+        (b:MacroFunction
+         (function (progn
+                     (let ((name   args.car)
+                           (argdef args.cdr.car)
+                           (body   args.cdr.cdr))
+                       (b:clist 'eval-when '(:compile-toplevel :load-toplevel)
+                                (b:clist 'setq name
+                                         (b:clist b:MacroFunction
+                                                  (b:clist 'function
+                                                           (b:Cons 'progn body)
+                                                           name.print_form nil
+                                                           argdef nil
+                                                           nil nil))))))
+                   "bs!defmacro"
+                   "minimalist defmacro for bootstrapping language"
+                   (args)))))
+
+(bs!defmacro car (form)
+  (b:clist 'b:attr form.car attributes:car))
+
+(bs!defmacro cdr (form)
+  (b:clist 'b:attr form.car attributes:cdr))
+
+(bs!defmacro cadr (form)
+  (b:clist 'b:attr form.car attributes:cdr attributes:car))
+
+(bs!defmacro cdar (form)
+  (b:clist 'b:attr form.car attributes:car attributes:cdr))
+
+(bs!defmacro cddr (form)
+  (b:clist 'b:attr form.car attributes:cdr attributes:cdr))
+
+(bs!defmacro caar (form)
+  (b:clist 'b:attr form.car attributes:car attributes:car))
+
+(bs!defmacro caddr (form)
+  (b:clist 'b:attr form.car attributes:cdr attributes:cdr attributes:car))
+
+(bs!defmacro symbol-name (form)
+  (b:clist 'b:attr (car form) attributes::print_form))
+
+(bs!defmacro null (form)
+  (b:clist 'is form nil))
+
+(bs!defmacro bs!lambda (form)
+  (let ((lambdalist (car form))
+        (body (cdr form)))
+    (b:clist 'function (b:Cons 'progn body)
+             "bs!lambda" nil
+             lambdalist nil
+             nil nil)))
+
+(bs!defmacro when (form)
+  (b:clist 'if (car form) (b:Cons 'progn (cdr form))))
+
+(bs!defmacro unless (form)
+  (b:clist 'if (car form) nil (b:Cons 'progn (cdr form))))
+
+(bs!defmacro null (form)
+  (b:clist 'is (car form) 'nil))
+
+(bs!defmacro cond (form)
+  (unless (null form)
+    (b:clist 'if 
+             (caar form)
+             (b:cons 'progn (cdar form))
+             (b:cons 'cond (cdr form)))))
+
+(bs!defmacro or (form)
+  (unless (null form)
+    (let ((g (b:gensym "or")))
+      (b:clist 'let (b:clist (b:clist g (car form)))
+               (b:clist 'if g g
+                        (b:clist 'or &rest (cdr form)))))))
+
+(bs!defmacro and (form)
+  (if (null form)
+      t
+      (if (null (cdr form))
+          (car form)
+          (let ((g (b:gensym "and")))
+            (b:clist 'let (b:clist (b:clist g (car form)))
+                     (b:clist 'if g
+                              (b:clist 'and &rest (cdr form))
+                              nil))))))
+
+(bs!defmacro bs!defun (form)
+  (let ((name   form.car)
+        (argdef form.cdr.car)
+        (body   form.cdr.cdr))
+    (b:clist 'setq name
+             (b:clist 'function
+                      (b:cons 'progn body)
+                      name.print_form nil
+                      argdef nil
+                      nil nil))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun symbolp (op)
+    (b:isinstance op b:Symbol))
+  (bs!defun stringp (op)
+    (b:isinstance op b:str))
+  (bs!defun consp (op)
+    (b:isinstance op b:cons))
+  (bs!defun atom (op)
+    (or (is op nil)
+        (not (b:isinstance op b:cons)))))
+
+(bs!defmacro while (form)
+  (let ((predicate (car form))
+        (body (cdr form))
+        (top-loop (b:gensym "top-loop"))
+        (exit-loop (b:gensym "exit-loop")))
+    (b:clist 'tagbody
+             top-loop
+             (b:clist 'unless predicate
+                      (b:clist 'go exit-loop))
+             (b:cons 'progn body)
+             (b:clist 'go top-loop)
+             exit-loop)))
+
+(bs!defmacro dolist (form)
+  (let ((var (caar form))
+        (lst (car (cdar form)))
+        (rforms (cdr (cdar form)))
+        (body (cdr form))
+        (ptr (b:gensym "ptr")))
+    (b:clist 'let (b:clist (b:clist ptr lst))
+             (b:cons 'progn
+                     (b:cons (b:clist 'while (b:clist 'not (b:clist 'null ptr))
+                                      (b:clist 'let (b:clist (b:clist var (b:clist 'car ptr)))
+                                               (b:cons 'progn body))
+                                      (b:clist 'setq ptr (b:clist 'cdr ptr)))
+                             rforms)))))
+
+(bs!defmacro assert (form)
+  (b:clist unless (car form)
+           (b:clist 'raise (b:clist 'b:AssertionError (b:str (car form))))))
+
+(bs!defmacro bs!push (form)
+  (let ((value (car form))
+        (place (cadr form)))
+    (assert (symbolp place))
+    (b:clist 'setq place (b:clist b:cons value place))))
+
+(bs!defmacro let* (form)
+  (let ((lets (car form))
+        (body (cdr form)))
+    (cond (lets
+           (b:clist 'let (b:clist (car lets))
+                    (b:clist 'let* (cdr lets)
+                             &rest body)))
+          (t
+           (b:cons 'progn body)))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun bs!map (func seq)
+    (b:clist &rest (b:map func seq)))
+  (bs!defun bs!reverse (lst)
+    (let (acc)
+      (dolist (el lst acc)
+        (setq acc (b:cons el acc)))))
+  (bs!defun bs!parse-args* (args)
+    "(a b c d) -> ((a b c) d)"
+    (let ((reversed (bs!reverse args)))
+      (b:clist (bs!reverse (cdr reversed))
+               (car reversed)))))
+
+(bs!defmacro bs!named-lambda (form)
+  (let ((name (car form))
+        (lambda-list (cadr form))
+        (body (cddr form)))
+    (b:clist 'function 
+             (b:cons 'progn body) ;;body
+             (if (symbolp name)   ;;name
+                 (symbol-name name)
+                 (b:str name))
+             (when (b:isinstance (car body) b:str) ;; doc
+               (car body))
+             lambda-list ;;args
+             )))
+
+(bs!defmacro bs!lambda (form)
+  (b:clist 'bs!named-lambda "<bs!lambda>" (car form) &rest (cdr form)))
+
+(bs!defmacro bs!defun (form)
+  (b:clist 'setq (car form)
+           (b:clist 'bs!named-lambda (car form) (cadr form) &rest (cddr form))))
+
+(bs!defmacro bs!destructuring-bind (form)
+  (let ((pattern (car form))
+        (expr (cadr form))
+        (body (cddr form)))
+    (let* (lets ops
+           (%ptr (b:gensym "%ptr"))
+           ;; Finally a real closure on the Python virtual machine
+           (add-binding (bs!lambda (b)
+                          (bs!push b lets)
+                          (bs!push (b:clist 'setq b (b:clist 'car %ptr)) 
+                                   ops)))
+           rest-seen rest-set)
+      (dolist (el pattern)
+        (cond (rest-set
+               (syntax-error pattern "form after &rest var"))
+              ((eq el '&rest)
+               (when rest-seen
+                 (syntax-error pattern "multiple &rest"))
+               (setq rest-seen t))
+              ((symbolp el)
+               (cond (rest-seen
+                      (bs!push el lets)
+                      (bs!push (b:clist 'setq el %ptr)
+                               ops)
+                      (setq rest-set t))
+                     (t 
+                      (add-binding el))))
+              ((consp el)
+               (when rest-seen
+                 (syntax-error pattern "cons following &rest"))
+               (let ((g (b:gensym "subdestruct")))
+                 (add-binding g)
+                 (setq body (b:clist (b:clist 'bs!destructuring-bind 
+                                              el g &rest body)))))
+              (t 
+               (syntax-error pattern "unexpected form %s in bs!destructuring-bind" el)))
+        (unless rest-seen
+          (bs!push  (b:clist 'setq %ptr (b:clist 'cdr %ptr)) ops)))
+      (when (and rest-seen (not rest-set))
+        (syntax-error pattern "&rest without variable"))
+      (b:clist 'let 
+               (b:cons (b:clist %ptr expr) lets)
+               (b:cons 'progn (bs!reverse ops))
+               &rest body))))
+
+(bs!defmacro bs!named-macro (form)
+  (bs!destructuring-bind
+      (name lambda-list &rest body) form
+    (let ((form-sym (b:gensym "form")))
+      (b:clist 'b:MacroFunction
+               (b:clist 'bs!named-lambda name (b:clist form-sym)
+                        (b:clist bs!destructuring-bind lambda-list (b:clist 'b:clist '&rest form-sym) 
+                                 &rest body))))))
+
+(bs!defmacro bs!defmacro (form)
+  (bs!destructuring-bind
+      (name lambda-list &rest body) form
+    (b:clist 'eval-when '(:compile-toplevel :load-toplevel)
+             (b:clist 'setq name 
+                      (b:clist 'bs!named-macro name lambda-list &rest body)))))
+
+(eval-when (:load-toplevel :compile-toplevel)
+  (setattrq b:attr jamenson_compiler_macro
+     (bs!named-macro attr-compiler-macro (op &rest names)
+        (dolist (name names op)
+          (setq op (b:clist 'getattrq op name))))))
+
+(bs!defmacro bs!case (form &rest cases)
+  (let ((cases (bs!reverse cases)))
+    (let* ((val (b:gensym "case"))
+           tests maketest)
+      (setq maketest (bs!lambda (el)
+                       (cond ((symbolp el)
+                              (b:clist 'eq val (b:clist 'quote el)))
+                             ((atom el)
+                              (b:clist 'eq val el))
+                             (t
+                              (b:cons 'or (bs!map maketest el))))))
+      (when (eq (caar cases)
+                'otherwise)
+        (setq tests (b:cons 'progn (cdar cases)))
+        (setq cases (cdr cases)))
+      (dolist (case cases)
+        (setq tests (b:clist 'if (maketest (car case))
+                             (b:cons 'progn (cdr case))
+                             tests)))
+      (b:clist 'let (b:clist (b:clist val form))
+               tests))))
+
+(bs!defmacro bs!lambda* (lambda-list &rest body)
+  (bs!destructuring-bind
+      (lambda-list args*) (bs!parse-args* lambda-list)
+    (b:clist 'function
+             (b:cons 'progn body) ;;body
+             "<bs!lambda*>"            ;;name
+             nil                  ;; doc
+             lambda-list nil nil       ;;args, kwds, & defaults
+             args* nil            ;; *args, **kwds
+             )))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun bs!parse-lambda-list (lst body errorp)
+    (let* ((errorp (or errorp
+                       (bs!lambda* (form msg args)
+                              (raise (ValueError (modulo msg args))))))
+           positional
+           keywords
+           rest-var 
+           keys-var
+           (state 'positional)
+           (popel (bs!lambda ()
+                    (assert lst)
+                    (let ((tmp (car lst)))
+                      (setq lst (cdr lst))
+                      tmp))))
+      (while lst
+        (let ((el (popel)))
+          (bs!case state
+            (positional
+             (cond ((eq el '&keys)
+                    (setq state 'keys))
+                   ((eq el '&rest)
+                    (setq state 'rest))
+                   ((eq el '&remaining-keys)
+                    (setq state 'rest-kwds))
+                   ((consp el)
+                    (let ((g (b:gensym "destruct-arg")))
+                      (bs!push g positional)
+                      (setq body (b:clist 'bs!destructuring-bind el g body))))
+                   ((symbolp el)
+                    (bs!push el positional))
+                   (t
+                    (errorp el "bad positional form %s" el))))
+            (keys
+             (cond ((eq el '&keys)
+                    (errorp el "extra &keys"))
+                   ((eq el '&rest)
+                    (setq state 'rest))
+                   ((eq el '&remaining-keys)
+                    (setq state 'rest-kwds))
+                   ((consp el)
+                    (when (or (null el.cdr)
+                              el.cdr.cdr)
+                      (errorp el "bad default defintion %s" el))
+                    (bs!destructuring-bind 
+                        (sym default) el
+                      (unless (symbolp sym)
+                        (errorp sym "bad keyword %s; must be symbol" sym))
+                      (bs!push el keywords)))
+                   ((not (symbolp el))
+                    (errorp el "bad keyword %s; must be symol" el))
+                   (t
+                    (bs!push (b:clist el nil) keywords))))
+            (rest
+             (cond ((or (eq el '&keys)
+                        (eq el '&rest))
+                    (errorp el "invalid declaration %s" el))
+                   ((eq el '&remaining-keys)
+                    (unless rest-var
+                      (errorp el "&rest variable not specified"))
+                    (setq state 'rest-kwds))
+                   (rest-var
+                    (errorp el "extra after rest-var"))
+                   ((not (symbolp el))
+                    (errorp el "bad %s; rest-var must be symbol" el))
+                   (t
+                    (setq rest-var el))))
+            (rest-kwds
+             (cond ((or (eq el '&keys)
+                        (eq el '&rest)
+                        (eq el '&remaining-keys))
+                    (errorp el "invalid declaration %s" el))
+                   (keys-var 
+                    (errorp el "extra after &remaining-keys var"))
+                   ((not (symbolp el))
+                    (errorp el "bad %s; remaining-keys must be symbol" el))
+                   (t 
+                    (setq keys-var el))))
+            (otherwise (assert nil)))))
+      (when (and (eq state 'rest)
+                 (null rest-var))
+        (errorp nil "&rest variable not specified"))
+      (when (and (eq state 'rest-kwds)
+                 (null keys-var))
+        (errorp nil "&remaining-keys not specified"))
+      (b:clist (bs!reverse positional) (bs!reverse keywords) 
+             rest-var keys-var body))))
+
+(bs!defmacro bs!named-lambda (name lambda-list &rest body)
+  (let ((doc (when (b:isinstance (car body) b:str)
+               (car body))))
+    (bs!destructuring-bind
+        (positional keywords rest-var keys-var body)
+        (bs!parse-lambda-list lambda-list (b:cons 'progn body) syntax-error)
+      (bs!destructuring-bind
+          (kwds defaults) (b:clist &rest (b:zip &rest keywords))
+        (b:clist 'function
+                 body
+                 (if (symbolp name)
+                     (symbol-name name)
+                     name)
+                 doc
+                 (b:clist &rest positional) 
+                 (b:clist &rest kwds) 
+                 (b:clist &rest defaults)
+                 rest-var keys-var)))))
+
+(bs!defmacro bs!flet (flets &rest body)
+  (let (acc-funcs
+        acc-syms)
+    (dolist (flet flets)
+      (bs!destructuring-bind
+          (name lambda-list &rest body) flet
+        (bs!push (b:clist name (b:clist bs!named-lambda name lambda-list &rest body))
+                 acc-funcs)
+        (bs!push name acc-syms)))
+    (b:clist 'let acc-syms 
+             (b:clist 'progn &rest (b:map (bs!lambda ((name func))
+                                            (b:clist 'setq name func))
+                                          acc-funcs))
+             &rest body)))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:__import__ "jamenson.compiler.translate")
+  (b:__import__ "jamenson.compiler.block")
+  (bs!defun bs!eval (form &keys 
+                          (form_locations (b:dict))
+                          (filename "<string>"))
+    (let* ((jamenson (b:__import__ "jamenson.compiler.translate"))
+           (ir (jamenson.compiler.translate.translate_top_level_form form
+                         :form_locations form_locations
+                         :filename filename))
+           (compiler jamenson.compiler.block.block_compiler))
+      (cond (compiler 
+             (compiler.compile_time_eval ir))
+            (t
+             (jamenson.compiler.block.compile_time_eval ir))))))
+
+(bs!defmacro bs!macrolet (macrolets &rest body)
+  (let* ((jamenson (b:__import__ "jamenson.compiler.translate"))
+         (state jamenson.compiler.translate.state)
+         (old-scope state.scope))
+    (setattrq state scope (old-scope.create_child :new_locals b:False))
+    (dolist (macrolet macrolets)
+      (bs!destructuring-bind
+          (name lambda-list &rest body) macrolet
+        (state.scope.register_macrolet name
+               (bs!eval (b:clist bs!named-macro name lambda-list &rest body)
+                        :form_locations state.form_locations
+                        :filename state.filename))))
+    (let ((ir (jamenson.compiler.translate.translate (b:cons 'progn body))))
+      (setattrq state scope old-scope)
+      ir)))
+
+(bs!defun 1+ (op)
+  (add op 1))
+
+(bs!defun 1- (op)
+  (subtract op 1))
+
+(bs!defun last (op)
+  (while (cdr op)
+    (setq op (cdr op)))
+  op)
+
+(bs!defun reverse (lst)
+  (let (acc)
+    (dolist (el lst acc)
+      (setq acc ((compile-time-value b:cons) el acc)))))
+
+(bs!defun clist* (first &rest rest)
+  (if rest
+      ((compile-time-value b:cons)
+       first (clist* &rest rest))
+      first))
+
+(bs!defun bs!format (msg &rest args)
+  (modulo msg args))
+
+(bs!defun sayf (msg &rest args)
+  (say (bs!format msg &rest args)))
+
+(bs!defun die (&rest args)
+  (let ((f (sys._getframe 1)))
+    (say (bs!format "dying in %s.%d"
+                    f.f_code.co_filename
+                    f.f_lineno)))
+  (say &rest args)
+  (b:exit 1))
+
+(bs!defun error (&keys (msg "error") &rest args)
+  (raise (b:RuntimeError (bs!format msg args))))
+
+(bs!defmacro bs!import (form)
+  (let ((op form)
+	acc)
+    (while (consp op)
+      (assert (is (car op) 'b:attr))
+      (bs!push (symbol-name (caddr op)) acc)
+      (setq op (cadr op)))
+    (assert (symbolp op))
+    (bs!push (symbol-name op) acc)
+    (b:clist 'setq op
+	   (b:clist 'b:__import__ ((b:attr "." attributes::join) acc)))))
+
+(bs!defmacro bs!globlet (lets &rest body)
+  (if lets
+      (let* ((def (car lets))
+	     (sym (if (symbolp def)
+		      def (car def)))
+	     (val (if (symbolp def)
+		      nil (cadr def)))
+	     (g (b:gensym "bs!globlet-holder"))
+	     (r (b:gensym "bs!globlet-return")))
+	(b:clist 'let (b:clist (b:clist g sym) r)
+	       (b:clist 'bs!globlet (cdr lets)
+		      (b:clist 'setq sym val)
+		      (b:clist 'tryfinally
+			     (b:clist 'setq r (b:cons 'progn body))
+			     (b:clist 'setq sym g))
+		      r)))
+      (b:cons 'progn body)))
+
+(bs!defmacro bs!xisinstance (op type)
+  (b:clist (compile-time-value b:isinstance)
+           op
+           (b:clist 'compile-time-value type)))
+
+(eval-when (:load-toplevel :compile-toplevel)
+  (bs!defun numberp (op)
+    (bs!xisinstance op (b:tuple (b:clist b:int b:float b:long b:complex))))
+  (bs!defun symbolp (op)
+    (bs!xisinstance op b:Symbol))
+  (bs!defun stringp (op)
+    (bs!xisinstance op b:str))
+  (bs!defun consp (op)
+    (bs!xisinstance op b:cons)))

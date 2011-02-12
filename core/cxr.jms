@@ -1,0 +1,44 @@
+;; All the fun cXr operations ie. caddr
+;; Defines function with compiler macro to open code these basic operations
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (b:require 'ops))
+
+(eval-when (:compile-toplevel)
+  (bs!defun parse-cXr-patterns (sym)
+    (b:map (bs!lambda (char)
+           (bs!case char
+             ("a" 'attributes::car)
+             ("d" 'attributes::cdr)
+             (otherwise (error "bad cXr operation %s; invalid char %s" sym char))))
+         (getitem (symbol-name sym) (b:slice -2 0 -1))))
+  (setq patterns (b:map (bs!lambda (sym)
+                          (b:clist sym (parse-cXr-patterns sym)))
+                        '(cdr cddr cdddr cddddr cdddddr
+                          car caar caaar caaaar caaaaar
+                          cadr caddr cadddr caddddr
+                          caar caadr cadar caaddr))))
+
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!defun generate-cXr-code (op pattern)
+    (let ((acc op))
+      (bs!for (atr pattern acc)
+        (setq acc `(b:attr ,acc ,atr))))))
+
+;; setup functions and compiler macros
+(eval-when (:compile-toplevel :load-toplevel)
+  (bs!macrolet 
+   ((setup-forms ()
+    `(progn ,@(b:clist &rest 
+       (b:map (bs!lambda ((sym pattern))
+                `(progn
+                   (bs!defun ,sym (op)
+                     ,(generate-cXr-code 'op pattern))
+                   (setattrq 
+                      ,sym
+                      jamenson_compiler_macro
+                      (bs!named-macro ,(bs!format "%s-compiler-macro" sym) (op)
+                        (generate-cXr-code op ,pattern)))))
+              patterns)))))
+   (setup-forms)))
+
