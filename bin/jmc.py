@@ -65,7 +65,7 @@ class vtiming(timing):
 class FrontEndCompiler(BlockCompiler):
 
     def read_all_top_level_forms(self):
-        self.vmsg(1, 'loading forms')
+        jmc.vmsg(1, 'loading forms')
         with timing() as time:
             op = super(FrontEndCompiler, self).read_all_top_level_forms()
         jmc.vmsg(1, 'loaded forms in %s', time.strtime)
