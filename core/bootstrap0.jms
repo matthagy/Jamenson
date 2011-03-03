@@ -502,7 +502,7 @@
   (b:exit 1))
 
 (bs!defun error (&keys (msg "error") &rest args)
-  (raise (b:RuntimeError (bs!format msg args))))
+  (raise (b:RuntimeError (bs!format msg &rest args))))
 
 (bs!defmacro bs!import (form)
   (let ((op form)
