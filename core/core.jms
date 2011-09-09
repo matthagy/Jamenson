@@ -1,5 +1,18 @@
 
+;; Loaded Jamenson modules that provide core functionality
 
-(b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr 'lambda 'iter 'cons 
-           'symbol 'setf 'control 'import 'multimethod 'user)
-
+(b:require
+  'bootstrap0
+  'backq
+  'bootstrap1
+  'ops
+  'cxr
+  'lambda
+  'iter
+  'cons 
+  'symbol
+  'setf
+  'control
+  'import
+  'multimethod
+  'user)
