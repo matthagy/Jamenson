@@ -1,4 +1,11 @@
-; Minimum Framework to Load Back Quote Reader
+;; Initial boot strapping state
+;;
+;; Provides the minimum framework to load back quote reader.
+;; As we lack the back quote and most lisp constructs, this
+;; code is quite painful to write and modify. At this stage
+;; all we have are intrinsics special forms provided by
+;; the Python level translator.
+
 
 (eval-when (:compile-toplevel :load-toplevel)
   (setq sys (b:__import__ "sys"))  
