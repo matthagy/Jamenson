@@ -1,0 +1,10 @@
+Builtin (core) functionality of Jamenson as provided in Jamenson.
+
+Here we bootstrap the language through a series of steps to provide a
+Scheme-ish language. We start with the basic language provided by
+the python translator and use macros to build a full language.
+
+See core.jms for the order in which core is loaded.
+
+Additionally, the build.py script compiles all of the Jamenson
+modules to accelerate loading.
