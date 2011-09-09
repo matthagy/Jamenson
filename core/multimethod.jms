@@ -1,3 +1,4 @@
+;; lispy interface to jamenson.runtime.multimethod module
 
 (eval-when (:compile-toplevel :load-toplevel)
   (b:require 'bootstrap0 'backq 'bootstrap1 'ops 'cxr 'lambda 'iter 'cons

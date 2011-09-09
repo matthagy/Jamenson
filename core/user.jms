@@ -8,6 +8,7 @@
   (let ((user-pkg (get_package "user")))
     ;; symbols from core
     (let ((user-symbols-from-core
+           ;; read in user_symbols.jms at compile time
            (compile-time-value
             (let ((filename "user_symbols.jms"))
               (with-import (:from jamenson.runtime.read :import readone)
