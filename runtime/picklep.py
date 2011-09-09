@@ -15,7 +15,7 @@ from .multimethod import MultiMethod, defmethod
 from .atypes import anytype
 from .marshalp import iter_col_elements
 
-# this has gotten to complicated, just force true check
+# this has gotten too complicated, just force true check
 import cPickle as pickle
 
 def picklep(op):
