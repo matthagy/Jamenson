@@ -87,13 +87,17 @@ class ReducingWalker(IRWalker):
 class LogicWalker(ReducingWalker):
 
     def __init__(self, predicate, logic, descend_into_functions=False):
+        assert logic is any or logic is all
         super(LogicWalker, self).__init__(logic)
         self.predicate = predicate
         self.descend_into_functions = descend_into_functions
 
     def visit_node(self, node):
         if self.predicate(node):
-            return True
+            if self.logic is any:
+                return True
+        elif self.logic is all:
+            return False
         return self.visit_children(node)
 
 def any_node(predicate, node, descend_into_functions=False):
