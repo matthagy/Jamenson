@@ -1,5 +1,5 @@
 '''Flow graphs of program executions.
-   Used for more extensive analysis of IR.
+   (Will someday be) Used for more extensive analysis of IR.
 '''
 
 from . import ir as I
