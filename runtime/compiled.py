@@ -7,7 +7,7 @@ from __future__ import with_statement
 import marshal
 from types import CodeType
 
-from .tmpio import temp_file_proxy
+from hlab.tempfile import temp_file_proxy
 from .require import files_search_path
 
 #unique 8 byte identification of compiled jamenson source code
