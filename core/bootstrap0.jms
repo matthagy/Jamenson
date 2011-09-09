@@ -4,7 +4,7 @@
 ;; As we lack the back quote and most lisp constructs, this
 ;; code is quite painful to write and modify. At this stage
 ;; all we have are intrinsics special forms provided by
-;; the Python level translator.
+;; the Python level translator and the built in package.
 
 
 (eval-when (:compile-toplevel :load-toplevel)
