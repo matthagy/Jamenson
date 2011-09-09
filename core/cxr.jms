@@ -1,4 +1,4 @@
-;; All the fun cXr operations ie. caddr
+;; All the fun cXr operations; e.g. caddr
 ;; Defines function with compiler macro to open code these basic operations
 
 (eval-when (:compile-toplevel :load-toplevel)
@@ -12,12 +12,12 @@
              ("d" 'attributes::cdr)
              (otherwise (error "bad cXr operation %s; invalid char %s" sym char))))
          (getitem (symbol-name sym) (b:slice -2 0 -1))))
-  (setq patterns (b:map (bs!lambda (sym)
-                          (b:clist sym (parse-cXr-patterns sym)))
-                        '(cdr cddr cdddr cddddr cdddddr
-                          car caar caaar caaaar caaaaar
-                          cadr caddr cadddr caddddr
-                          caar caadr cadar caaddr))))
+  (setq cxr-patterns (b:map (bs!lambda (sym)
+                              (b:clist sym (parse-cXr-patterns sym)))
+                            '(cdr cddr cdddr cddddr cdddddr
+                              car caar caaar caaaar caaaaar
+                              cadr caddr cadddr caddddr
+                              caar caadr cadar caaddr))))
 
 (eval-when (:compile-toplevel :load-toplevel)
   (bs!defun generate-cXr-code (op pattern)
@@ -39,6 +39,6 @@
                       jamenson_compiler_macro
                       (bs!named-macro ,(bs!format "%s-compiler-macro" sym) (op)
                         (generate-cXr-code op ,pattern)))))
-              patterns)))))
+              cxr-patterns)))))
    (setup-forms)))
 
