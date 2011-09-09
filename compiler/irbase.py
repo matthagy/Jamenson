@@ -240,10 +240,9 @@ def createnode(name, children=[], childlists=[],
 
     return cls, maker
 
-def _defnode(name, *args, **kwds):
+def _defnode(name, gbls, *args, **kwds):
     '''declarative dsl to define nodes
     '''
-    gbls = sys._getframe(kwds.pop('depth',1)).f_globals
     make_name = kwds.pop('make_name', None)
     abstract = kwds.pop('abstract', False)
 
@@ -260,9 +259,14 @@ def _defnode(name, *args, **kwds):
     return cls
 
 def defnode(name_or_list, **kwds):
+    try:
+        gbls = kwds.pop('globals')
+    except KeyError:
+        gbls = sys._getframe(kwds.pop('depth',1)).f_globals
+
     if isinstance(name_or_list, list):
-        return [defnode(name,**kwds) for name in name_or_list]
-    return _defnode(name_or_list, **kwds)
+        return [defnode(name, globals=gbls, **kwds) for name in name_or_list]
+    return _defnode(name_or_list, gbls, **kwds)
 
 
 # # # # # # # # # # # # # # # #
