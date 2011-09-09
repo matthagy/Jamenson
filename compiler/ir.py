@@ -1,4 +1,7 @@
-'''Intermediate Representation of code for compilation
+'''Intermediate Representation of code for compilation.
+
+   Uses the port systems and magic attributes to access and manipulate
+   control flow.n
 '''
 
 from __future__ import absolute_import
