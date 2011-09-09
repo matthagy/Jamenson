@@ -94,9 +94,9 @@ class LogicWalker(ReducingWalker):
 
     def visit_node(self, node):
         if self.predicate(node):
-            if self.logic is any:
+            if self.reducer is any:
                 return True
-        elif self.logic is all:
+        elif self.reducer is all:
             return False
         return self.visit_children(node)
 
