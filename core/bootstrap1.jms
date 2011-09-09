@@ -1,4 +1,6 @@
-;; bootstrapping utilties that use backquote reader
+;; Additional boostrap of a bare minimimal lisp.
+;; At this stage we have a backquote reader which
+;; makes things much easier.
 
 (eval-when (:compile-toplevel :load-toplevel)
   (b:require 'bootstrap0)
