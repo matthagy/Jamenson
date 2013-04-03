@@ -6,3 +6,4 @@
 *.dylib
 *.o
 .*~
+/jamenson.egg-info/
