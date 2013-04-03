@@ -16,6 +16,8 @@
 name = 'jamenson'
 version = '0.0.1'
 
+from distutils.core import setup
+
 setup(
     name=name,
     version=version,
