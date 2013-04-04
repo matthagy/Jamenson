@@ -5,9 +5,9 @@ from __future__ import absolute_import
 from __future__ import with_statement
 
 import sys
-from hlab.pathutils import FilePath
 
 from ..runtime import load
+from ..runtime.filepath import FilePath
 from ..runtime.compiled import compile_source_ex
 from .jmbase import JMBase
 

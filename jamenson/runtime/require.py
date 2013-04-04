@@ -9,7 +9,7 @@ import re
 import os
 from contextlib import contextmanager
 
-from hlab.pathutils import FilePath, DirPath
+from .filepath import FilePath, DirPath
 
 from .ctxsingleton import CtxSingleton
 from .symbol import Symbol

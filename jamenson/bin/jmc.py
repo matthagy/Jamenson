@@ -5,8 +5,8 @@ from __future__ import absolute_import
 from __future__ import with_statement
 
 import sys
-from hlab.pathutils import FilePath
 
+from ..runtime.filepath import FilePath
 from ..compiler.util import timing
 from ..compiler.block import BlockCompiler
 from ..runtime.compiled import write_code, dump_code

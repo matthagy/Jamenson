@@ -5,7 +5,7 @@ from __future__ import absolute_import
 from __future__ import with_statement
 
 from ..runtime.load import loadfile
-from hlab.pathutils import FilePath
+from ..runtime.filepath import FilePath
 
 installed = False
 

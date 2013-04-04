@@ -8,7 +8,7 @@ import os
 import marshal
 from warnings import warn
 
-from hlab.pathutils import FilePath, DirPath
+from .filepath import FilePath, DirPath
 
 from .util import strtime
 from .compiled import read_code, compile_source

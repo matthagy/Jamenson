@@ -5,8 +5,8 @@ from __future__ import with_statement
 import os
 import sys
 from subprocess import Popen
-from hlab.pathutils import FilePath
 
+from jamenson.runtime.filepat import FilePath
 from jamenson.compiler.util import timing
 
 JMC_PATH = FilePath(os.path.expanduser('~/bin/jmc'))

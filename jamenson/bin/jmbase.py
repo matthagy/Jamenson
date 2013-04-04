@@ -9,8 +9,7 @@ import os.path
 from contextlib import contextmanager
 from optparse import OptionParser
 
-from hlab.pathutils import FilePath
-
+from ..runtime.filepath import FilePath
 from ..runtime.require import files_search_path
 from ..runtime import state as runtime_state
 from ..runtime.symbol import get_package, use_package, all_used_packages
