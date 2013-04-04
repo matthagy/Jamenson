@@ -8,4 +8,6 @@ optimizing compiler, Jamenson code runs atop the Python virtual machine and is c
 efficient than comparable Python code. Current uses include code generators, such as a pattern
 matching compiler to transform declarative languages into efficient implementation functions.
 Future plans include partial static type analysis with the aim of compiling to machine code
-via an external c-compiler. Your comments and contributions are always more than welcome. 
+via an external c-compiler.
+
+Your comments and contributions are always more than welcome. 

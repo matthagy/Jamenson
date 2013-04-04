@@ -1,5 +1,5 @@
-'''annotation of ir
-   handles simple annotations, mainling ignoring of results
+'''Annotation of ir.
+   Handles simple annotations, particularly marking results that are ignored.
 '''
 
 from __future__ import absolute_import
