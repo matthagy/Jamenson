@@ -1,7 +1,7 @@
 
 import unittest
 
-from HH2.pathutils import FilePath,DirPath
+from jamenson.runtime.filepath import FilePath,DirPath
 
 def basepath():
     filebase = FilePath(__file__).abspath().stripext()
